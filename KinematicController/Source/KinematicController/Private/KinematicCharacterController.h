@@ -9,6 +9,20 @@
 
 #include "KinematicCharacterController.generated.h"
 
+enum ForceType
+{
+	Force,
+	Acceleration,
+	Impulse
+};
+
+enum TimeIntegration
+{
+	Euler,
+	Verlet,
+	RK4
+};
+
 UCLASS()
 class AKinematicCharacterController : public APawn
 {
@@ -28,6 +42,23 @@ public:
 
 	void ApplyVelocity(const float& DeltaTime);
 
+	/// <summary>
+	/// Calculates position based on normal euler principle but instead of adding acceleration to velocity before calculation,
+	/// it uses dt + 1/2at2 to get more accurate acceleration-based position and adds the accel to velocity afterwards
+	/// </summary>
+	void CalculateEulerPosition(FVector& NewPosition, const float& DeltaTime);
+
+	/// <summary>
+	/// Calculates based on previous and current positions rather than by velocity, velcoity comes out as a byproduct.
+	/// </summary>
+	/// <param name="PreviousPosition"></param>
+	void CalculateVerletPosition(const FVector& PreviousPosition, FVector& NewPosition, const float& DeltaTime);
+	/// <summary>
+	/// Calculates the Position by averaging between start, midpoint 1, midpoint 2 and end to get more 
+	/// accurate estimation but this is 4x more expensive. Stands for Runge-Kutta Method of the 4th Order
+	/// </summary>
+	void CalculateRK4Position(const float& DeltaTime);
+
 	void AddAcceleration(const FVector& AddedAccelerationForce, const bool& IsAffectedByMass);
 	/// <summary>
 	/// Uses F = ma to get acceleration and transform into velocity
@@ -35,9 +66,9 @@ public:
 	/// <param name="AddedForce"> Used as base force or impulse and doesn't use const for the sake of the impulse </param>
 	/// <param name="DeltaTime"> Turns acceleration into velocity and Impulse into force </param>
 	/// <param name="IsImpulse"> Checks whether the user wants the force to be an impulse or not</param>
-	void AddForce(FVector AddedForce, const float& DeltaTime, const bool& IsImpulse);
+	void AddForce(FVector AddedForce, const float& DeltaTime, const ForceType& TypeOfForce);
 
-	void CollideAndSlideCollision(int& CurrentBounces, FVector& CurrentVel, FVector& InitialVel, );
+	void CollideAndSlideCollision(int& CurrentBounces, FVector& CurrentVel, FVector& InitialVel, FVector CurrentPos);
 
 	FVector Acceleration;
 	FVector PreviousVelocity;

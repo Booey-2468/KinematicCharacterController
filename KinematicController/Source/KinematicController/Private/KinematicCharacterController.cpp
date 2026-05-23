@@ -30,25 +30,21 @@ void AKinematicCharacterController::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 }
-void AKinematicCharacterController::AddAcceleration(const FVector& AddedAccelerationForce, const bool& IsAffectedByMass)
-{
-	if (IsAffectedByMass)
-	{
-		Acceleration += AddedAccelerationForce / Mass;
-	}
-	else
-	{
-		Acceleration += AddedAccelerationForce;
-	}
-}
 
-void AKinematicCharacterController::AddForce(FVector AddedForce, const float& DeltaTime, const bool& IsImpulse)
+void AKinematicCharacterController::AddForce(FVector AddedForce, const float& DeltaTime, const ForceType& TypeOfForce)
 {
-	if (IsImpulse)	// Combined add force and impulse as impulse becomes a force after being divided by deltatime
+	if (TypeOfForce == ForceType::Force)
+	{
+		Acceleration += AddedForce / Mass;	// Changed From Velocity to Acceleration as a store as not all time Integration methods are based on velocity and allows for more accurate seperation
+	}
+	else if (TypeOfForce == ForceType::Impulse)	// Combined add force and impulse as impulse becomes a force after being divided by deltatime
 	{
 		AddedForce = AddedForce / DeltaTime;
 	}
-	Velocity += AddedForce / Mass * DeltaTime;
+	else
+	{
+		Acceleration += AddedForce;
+	}
 }
 
 void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
@@ -56,16 +52,29 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	FVector VerticalVelocity = GravityDir * FVector::DotProduct(Velocity, GravityDir);
 	FVector HorizontalVelocity = Velocity - VerticalVelocity;
 
-	FVector PlayerMovementDist = Velocity * DeltaTime;
+	FVector NewPosition;
 
-	if (Acceleration.Length() > 0)
-	{
-		PlayerMovementDist += 0.5 * Acceleration * DeltaTime * DeltaTime;
-		Velocity += Acceleration * DeltaTime;
-	}	
+	CalculateEulerPosition(NewPosition, DeltaTime);
+	SetActorLocation(NewPosition);
 
-	PlayerMovementDist += GetActorLocation();
-	SetActorLocation(PlayerMovementDist);
+	Acceleration = FVector(0);
+}
+
+void AKinematicCharacterController::CalculateEulerPosition(FVector& NewPosition, const float& DeltaTime)
+{
+	NewPosition = Velocity * DeltaTime + 0.5 * Acceleration * DeltaTime * DeltaTime;
+	NewPosition += GetActorLocation();
+}
+
+void AKinematicCharacterController::CalculateVerletPosition(const FVector& PreviousPosition, FVector& NewPosition, const float& DeltaTime)
+{
+	NewPosition = 2 * GetActorLocation() - PreviousPosition + Acceleration * DeltaTime * DeltaTime;
+	Velocity += Acceleration * DeltaTime;	// Could Switch to Velocity verlet algorithm if expected Acceleration in between timesteps but decided not to out of unnecessary complexity and lack of reason to.
+}
+
+void AKinematicCharacterController::CalculateRK4Position(const float& DeltaTime)
+{
+
 }
 
 // Called to bind functionality to input
