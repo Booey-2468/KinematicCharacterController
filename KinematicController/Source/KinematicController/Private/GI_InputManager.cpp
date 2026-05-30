@@ -2,19 +2,19 @@
 
 
 #include "GI_InputManager.h"
-
+/*
 void UGI_InputManager::AddInputKey(const FKey& AddedKey)
 {
 	InputKey* OriginalKey = new InputKey();
-	OriginalKey->Key = AddedKey.KeyDetails;
+	OriginalKey->Key = AddedKey.GetFName();
 	InputKeys.Emplace(OriginalKey);
 }
 
-void UGI_InputManager::RemoveInputKey(const string& RemovedKey)
+void UGI_InputManager::RemoveInputKey(const FKey& RemovedKey)
 {
 	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
 	{
-		if (InputKeys[i]->Key == RemovedKey)
+		if (InputKeys[i]->Key == RemovedKey.GetFName())
 		{
 			delete InputKeys[i];
 			InputKeys[i] = nullptr;
@@ -24,11 +24,11 @@ void UGI_InputManager::RemoveInputKey(const string& RemovedKey)
 	}
 }
 
-void UGI_InputManager::ResetKey(const string& KeyToReset)
+void UGI_InputManager::ResetKey(const FKey& KeyToReset)
 {
 	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
 	{
-		if (InputKeys[i]->Key == KeyToReset)
+		if (InputKeys[i]->Key == KeyToReset.GetFName())
 		{
 			InputKeys[i]->FrameCount = 0;
 			InputKeys[i]->HasBeenPressed = false;
@@ -39,14 +39,25 @@ void UGI_InputManager::ResetKey(const string& KeyToReset)
 	}
 }
 
-InputKey* UGI_InputManager::GetInputKey(const string& KeyToGet)
+InputKey* UGI_InputManager::GetInputKey(const FKey& KeyToGet)
 {
 	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
 	{
-		if (InputKeys[i]->Key == KeyToGet)
+		if (InputKeys[i]->Key == KeyToGet.GetFName())
 		{
 			return InputKeys[i];
 		}
 	}
 	return nullptr;
 }
+
+void UGI_InputManager::UpdateKeyData(UPlayerController* InputReciever)
+{
+	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
+	{
+		if ( InputReciever-> (EKeys::GetKey(InputKeys[i])))
+		{
+
+		}
+	}
+}*/

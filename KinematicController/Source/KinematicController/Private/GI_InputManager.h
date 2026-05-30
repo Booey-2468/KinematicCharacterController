@@ -9,29 +9,28 @@
 
 #include "GI_InputManager.generated.h"
 
-/**
- * 
- */
 struct InputKey
 {
 	float HeldTime = 0;
 	int FrameCount = 0;
 	int MinFrames = 0;
 	bool HasBeenPressed = false;
-	string Key = "";
+	//FName Key = "";
 };
-
 UCLASS()
 class UGI_InputManager : public UGameInstance
 {
 	GENERATED_BODY()
 
 	TArray<InputKey*> InputKeys;
-
+	/*
 	void AddInputKey(const FKey& AddedKey);
-	void RemoveInputKey(const string& RemovedKey);
-	void ResetKey(const string& KeyToReset);
-	InputKey* GetInputKey(const string& KeyToGet);
+	void RemoveInputKey(const FKey& RemovedKey);
+	void ResetKey(const FKey& KeyToReset);
+	InputKey* GetInputKey(const FKey& KeyToGet);
+	void UpdateKeyData(UInputComponent* InputReciever);
+	*/
+
 
 	
 };
