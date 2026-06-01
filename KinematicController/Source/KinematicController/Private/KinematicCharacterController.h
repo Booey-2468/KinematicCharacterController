@@ -18,7 +18,7 @@ enum ForceType
 
 enum TimeIntegration
 {
-	Euler,
+	VelocityVerlet,
 	Verlet,
 	RK4
 };
@@ -44,9 +44,17 @@ protected:
 
 public:	
 	// Called every frame
-	virtual void Tick(float DeltaTime) override;
+	virtual void AsyncPhysicsTickActor(float DeltaTime, float SimTime) override;
 
 	void ApplyVelocity(const float& DeltaTime);
+
+	void CalculatePhysicsForces(const float& DeltaTime);
+
+
+#pragma region TimeIntegrationMethods
+	
+	
+	void CalculateEulerPosition(FVector& NewPosition, FVector& NewVelocity, const float& DeltaTime);
 
 	/// <summary>
 	/// Calculates position based on normal euler principle but instead of adding acceleration to velocity before calculation,
@@ -58,7 +66,7 @@ public:
 	/// Calculates based on previous and current positions rather than by velocity, velocity is implied by the displacement between the points.
 	/// </summary>
 	/// <param name="PreviousPosition"></param>
-	void CalculateVerletPosition(const FVector& PreviousPosition, FVector& NewPosition, FVector& NewVelocity, const float& DeltaTime);
+	void CalculateVerletPosition(const FVector& PrevPos, FVector& NewPos, FVector& NewVelocity, const float& DeltaTime);
 	/// <summary>
 	/// Calculates the Position by averaging between start, midpoint 1, midpoint 2 and end to get more 
 	/// accurate estimation but this is 4x more expensive. Stands for Runge-Kutta Method of the 4th Order
@@ -75,6 +83,7 @@ public:
 	/// <param name="Velocity"> Uses this as reference for current velocity and to input new velocity</param>
 	/// <param name="ComputedAccel"> Passes by reference the acceleration which is currently just the acceleration variable</param>
 	void CalculateRK4Acceleration(const FVector& Position, const FVector& CurrentVelocity, FVector& ComputedAccel);
+#pragma endregion
 	/// <summary>
 	/// Uses F = ma to get acceleration and transform into velocity
 	/// </summary>
@@ -83,21 +92,60 @@ public:
 	/// <param name="TypeOfForce"> Checks whether the user wants the force to be an impulse or not</param>
 	void AddForce(const FVector& AddedForce, const float& DeltaTime, const ForceType& TypeOfForce);
 
-	FVector CollideAndSlideCollision(int& CurrentBounces, FVector& CurrentVel, FVector& InitialVel, FVector CurrentPos, const float& DeltaTime);
-
-	inline FVector Normalized(const FVector& FullVector);
-	inline float Magnitude(const FVector& FullVector);
-	inline FVector ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal);
-	inline FVector ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector);
-	inline float DotProduct(const FVector& FullVector, const FVector& VectorNormal);
+	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity);
+	
 	inline float Square(const float& NumberToSquare);
+	inline float Power(const float& MultNum, const int& Power);
+#pragma region VectorMathematics
+
+	/// <summary>
+	/// Custom Function to get normalized Vector by dividing by magnitude
+	/// </summary>
+	/// <param name="FullVector"> Input Vector to be Normalized</param>
+	/// <returns>Returns a normalized vector </returns>
+	inline FVector Normalized(const FVector& FullVector);
+	/// <summary>
+	/// Custom Function to calculate magnitude of a vector by squaring and adding vector together then square rooting
+	/// </summary>
+	/// <param name="FullVector"> Vector to Find the magnitude of</param>
+	/// <returns> Returns the magnitude of the inputted vector</returns>
+	inline float Magnitude(const FVector& FullVector);
+
+	inline float SquaredMagnitude(const FVector& FullVector);
+
+	/// <summary>
+	/// Projects the first vector onto the projection vector
+	/// Using equation V . P/|P|sqr * P
+	/// </summary>
+	/// <param name="VectorToProject"> Vector that is projetced onto the projection vector</param>
+	/// <param name="ProjectionVector"> Vector that is being projected on</param>
+	/// <returns> Returns the projected vector</returns>
+	inline FVector ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector);
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <param name="FullVector"></param>
+	/// <param name="PlaneNormal"></param>
+	/// <returns></returns>
+	inline FVector ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal);
+
+	inline float AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2);
+
+	inline float DotProduct(const FVector& FullVector, const FVector& VectorNormal);
+
 	inline FVector CrossProduct(const FVector& Vector1, const FVector& Vector2);
 
-	FVector Acceleration;
-	FVector PreviousPosition;
+	inline FVector ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal);
+
+#pragma endregion
+
+	FVector Acceleration = FVector(0);
+	FVector PreviousAcceleration = FVector(0);
+
+	FVector PreviousPosition = FVector(0);
 	FVector Velocity = FVector(0);
-	FVector GravityDir;
-	FVector GravityMagnitude;
+	FVector GravityNormal = FVector::UpVector;
+	float GravityMagnitude = -9.81f;
 	int MaxBounces = 5;
 	UPROPERTY(EditAnywhere)
 	float Mass = 70.0f;
@@ -111,8 +159,26 @@ public:
 
 	float MaxAngle = 80.0f;
 
+	bool IsGrounded = false;
+
 	UPROPERTY(EditAnywhere)
 	USkeletalMesh* CharMesh;
+
+	float FrictionCoefficent = 1.0f;
+
+	float DragCoefficent = 0.1f;
+
+	float MaxSpeed = 10.0f;
+
+	float MoveSpeed = 5.0f;
+
+	float JumpMagnitude = 20.0f;
+
+	int MaxJumpCount = 1;
+	int CurrentJumpCount = 0;
+
+	FVector FloorNormal = FVector::UpVector;
+
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
