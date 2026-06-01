@@ -2,7 +2,7 @@
 
 
 #include "GI_InputManager.h"
-/*
+
 void UGI_InputManager::AddInputKey(const FKey& AddedKey)
 {
 	InputKey* OriginalKey = new InputKey();
@@ -24,7 +24,7 @@ void UGI_InputManager::RemoveInputKey(const FKey& RemovedKey)
 	}
 }
 
-void UGI_InputManager::ResetKey(const FKey& KeyToReset)
+void UGI_InputManager::TempResetKey(const FKey& KeyToReset)
 {
 	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
 	{
@@ -32,7 +32,6 @@ void UGI_InputManager::ResetKey(const FKey& KeyToReset)
 		{
 			InputKeys[i]->FrameCount = 0;
 			InputKeys[i]->HasBeenPressed = false;
-			InputKeys[i]->HeldTime = 0.0f;
 			InputKeys[i]->MinFrames = 0;
 			return;
 		}
@@ -51,13 +50,27 @@ InputKey* UGI_InputManager::GetInputKey(const FKey& KeyToGet)
 	return nullptr;
 }
 
-void UGI_InputManager::UpdateKeyData(UPlayerController* InputReciever)
+void UGI_InputManager::UpdateKeyData(const FKey& KeyToUpdate, const float& DeltaTime)
 {
-	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
-	{
-		if ( InputReciever-> (EKeys::GetKey(InputKeys[i])))
-		{
+	InputKey* Key = GetInputKey(KeyToUpdate);
 
+	if (Key)
+	{
+		++Key->FrameCount;
+		if (Key->FrameCount > Key->MinFrames && !Key->HasBeenPressed)
+		{
+			Key->HasBeenPressed = true;
 		}
+		Key->HeldTime += DeltaTime;
 	}
-}*/
+}
+
+void UGI_InputManager::OnKeyRelease(const FKey& ReleasedKey)
+{
+	InputKey* Key = GetInputKey(ReleasedKey);
+
+	if (Key)
+	{
+		Key->HeldTime = 0.0f;
+	}
+}

@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 
+#include "GI_InputManager.h"
+
 #include "Components/CapsuleComponent.h"
 
 #include "KinematicCharacterController.generated.h"
@@ -96,6 +98,22 @@ public:
 	
 	inline float Square(const float& NumberToSquare);
 	inline float Power(const float& MultNum, const int& Power);
+	inline void CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum);
+	void HandleCollisionImpulse(const FVector& DeltaObjVelocity, const float& ObjMass);
+	/// <summary>
+	/// Used to convert meters to centimeters as I prefer to use meters and its more common in physics overall
+	/// Needed when interacting with any UE5 systems such as shape sweeps and setting actor location
+	/// </summary>
+	/// <param name="Vector"> The Vector to be Converted into UE5 cm units</param>
+	/// <returns> The Converted Vector</returns>
+	FVector ConvertToUE5Units(const FVector& Vector);
+	/// <summary>
+	/// Used to convert centimeters to meters as I prefer to use meters and its more common in physics overall
+	/// Needed after getting UE5 Values such as actor location or hit result location/impact point
+	/// </summary>
+	/// <param name="Vector">The Vector to be Converted into normal m units </param>
+	/// <returns></returns>
+	FVector ConvertFromUE5Units(const FVector& Vector);
 #pragma region VectorMathematics
 
 	/// <summary>
@@ -150,6 +168,8 @@ public:
 	UPROPERTY(EditAnywhere)
 	float Mass = 70.0f;
 
+	float Bounciness = 1.0f;
+
 	UCapsuleComponent* Collider;
 
 	float CapsuleHalfHeight = 90.0f;
@@ -158,6 +178,8 @@ public:
 	float SkinWidth = 0.02f;
 
 	float MaxAngle = 80.0f;
+
+	float ImpulseDeltaTime = 0.001f;
 
 	bool IsGrounded = false;
 

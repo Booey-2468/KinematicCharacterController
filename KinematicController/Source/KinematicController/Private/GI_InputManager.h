@@ -15,7 +15,7 @@ struct InputKey
 	int FrameCount = 0;
 	int MinFrames = 0;
 	bool HasBeenPressed = false;
-	//FName Key = "";
+	FName Key = "";
 };
 UCLASS()
 class UGI_InputManager : public UGameInstance
@@ -23,13 +23,14 @@ class UGI_InputManager : public UGameInstance
 	GENERATED_BODY()
 
 	TArray<InputKey*> InputKeys;
-	/*
+
+public:
 	void AddInputKey(const FKey& AddedKey);
 	void RemoveInputKey(const FKey& RemovedKey);
-	void ResetKey(const FKey& KeyToReset);
+	void TempResetKey(const FKey& KeyToReset);
 	InputKey* GetInputKey(const FKey& KeyToGet);
-	void UpdateKeyData(UInputComponent* InputReciever);
-	*/
+	void UpdateKeyData(const FKey& KeyToUpdate, const float& DeltaTime);
+	void OnKeyRelease(const FKey& ReleasedKey);
 
 
 	

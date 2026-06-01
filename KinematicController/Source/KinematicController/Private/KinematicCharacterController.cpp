@@ -66,11 +66,11 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	FCollisionQueryParams params;
 	params.TraceTag = GetWorld()->DebugDrawTraceTag;
 
-	GetWorld()->SweepSingleByChannel(hit, CurrentPos, CurrentPos + (dist * Normalized(CurrentVel)), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), params);
+	GetWorld()->SweepSingleByChannel(hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), params);
 
 	if (hit.bBlockingHit)
 	{
-		FVector SnapToSurface = Normalized(CurrentVel) * (Magnitude(hit.Location - CurrentPos) - SkinWidth);
+		FVector SnapToSurface = Normalized(CurrentVel) * (Magnitude(ConvertFromUE5Units(hit.Location) - CurrentPos) - SkinWidth);
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
 		float Angle = AngleBetweenVectors(hit.ImpactNormal, GravityNormal);
@@ -84,7 +84,8 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		{
 			if (IsGravity)	// If the check is for gravity this makes sure there is no sliding due to gravity
 			{
-				return SnapToSurface;
+				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
+										// Optonally could add impulses to other objects if physics is enabled on them
 			}
 			LeftoverVelocity = ProjectAndScale(LeftoverVelocity, hit.ImpactNormal);
 		}
@@ -101,6 +102,8 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			{
 				LeftoverVelocity = ProjectAndScale(LeftoverVelocity, hit.ImpactNormal) * Scale;
 			}
+			// Could also add momentum and bounciness to this by adding velocity from the impulse
+			// Optonally could add impulses to other objects if physics is enabled on them
 		}
 		++CurrentBounces;	// Increments CurrentBounces
 		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, IsGravity);
@@ -113,31 +116,31 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 {
-	FVector NewPosition = GetActorLocation();
+	FVector NewPosition = ConvertFromUE5Units(GetActorLocation());
 	
-	CalculateEulerPosition(NewPosition, Velocity, DeltaTime);
+	CalculateEulerPosition(NewPosition, Velocity, DeltaTime);	
 
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Velocity: " + Velocity.ToCompactString() + " Current Acceleration " + Acceleration.ToCompactString());
 
-	PreviousPosition = GetActorLocation();
+	PreviousPosition = ConvertFromUE5Units(GetActorLocation());
 
 	int TotalBounces = 0;
+	FVector TotalDisplacement = NewPosition - PreviousPosition;	// Decided to use new position instead of velocity so its not unneeded calculation also easier to add in transform movement options 
 	
 	// May be better to use actual displacement for other time integration methods but velocity verlet should be fairly accurate
-	FVector GravityDisplacement = ProjectOnVector(Velocity, GravityNormal);
+	FVector GravityDisplacement = ProjectOnVector(TotalDisplacement, GravityNormal);
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Vertical Velocity: " + GravityDisplacement.ToCompactString() + " Current Acceleration " + Acceleration.ToCompactString());
 
-	FVector MovementDisplacement = (Velocity - GravityDisplacement) * DeltaTime;
-	GravityDisplacement *= DeltaTime;
-
+	FVector MovementDisplacement = TotalDisplacement - GravityDisplacement;
 	// Made so it adds to position as its velocity/displacement based rather than
 
 	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, PreviousPosition, false);
 
-	GravityDisplacement = CollideAndSlideCollision(TotalBounces, GravityDisplacement, GravityDisplacement, NewPosition, true);
+	NewPosition = ConvertToUE5Units(PreviousPosition + MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
 
-	NewPosition += MovementDisplacement;	// Now seperating displacement from new position so that it can also be used to change velocity
-	NewPosition += GravityDisplacement;
+	GravityDisplacement = CollideAndSlideCollision(TotalBounces, GravityDisplacement, GravityDisplacement, PreviousPosition + MovementDisplacement, true);
+
+	NewPosition += ConvertToUE5Units(GravityDisplacement);
 
 	Velocity = (MovementDisplacement + GravityDisplacement) / DeltaTime;	// Updates Velocity based on collision displacement
 
@@ -192,6 +195,24 @@ inline float AKinematicCharacterController::Power(const float& MultNum, const in
 		PoweredNum *= MultNum;
 
 	return PoweredNum;
+}
+inline void AKinematicCharacterController::CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum)
+{
+	ObjMomentum = ObjVelocity * ObjMass;
+}
+void AKinematicCharacterController::HandleCollisionImpulse(const FVector& DeltaObjVelocity, const float& ObjMass)
+{
+	FVector Impulse;
+	CalculateMomentum(DeltaObjVelocity, ObjMass, Impulse);
+	AddForce(Impulse, ImpulseDeltaTime, ForceType::Impulse);
+}
+FVector AKinematicCharacterController::ConvertToUE5Units(const FVector& Vector)
+{
+	return Vector * 100.0f;
+}
+FVector AKinematicCharacterController::ConvertFromUE5Units(const FVector& Vector)
+{
+	return Vector / 100.0f;
 }
 #pragma region VectorMathematics
 
