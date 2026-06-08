@@ -22,10 +22,10 @@ class UGI_InputManager : public UGameInstance
 {
 	GENERATED_BODY()
 
-	TArray<InputKey*> InputKeys;
+	TArray<InputKey*> InputKeys = TArray<InputKey*>();
 
 public:
-	void AddInputKey(const FKey& AddedKey);
+	void AddInputKey(const FKey& AddedKey, const int& MinFrames);
 	void RemoveInputKey(const FKey& RemovedKey);
 	void TempResetKey(const FKey& KeyToReset);
 	InputKey* GetInputKey(const FKey& KeyToGet);

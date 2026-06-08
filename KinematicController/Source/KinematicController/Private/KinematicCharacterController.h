@@ -52,6 +52,9 @@ public:
 
 	void CalculatePhysicsForces(const float& DeltaTime);
 
+	void AddPlayerInputKeys();
+	
+	void AddMovementInput(AActor* MovementAxis, const float& DeltaTime);
 
 #pragma region TimeIntegrationMethods
 	
@@ -94,12 +97,13 @@ public:
 	/// <param name="TypeOfForce"> Checks whether the user wants the force to be an impulse or not</param>
 	void AddForce(const FVector& AddedForce, const float& DeltaTime, const ForceType& TypeOfForce);
 
+	void AddTransformVel(const FVector& AddedTransform);
+
 	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity);
 	
 	inline float Square(const float& NumberToSquare);
 	inline float Power(const float& MultNum, const int& Power);
 	inline void CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum);
-	void HandleCollisionImpulse(const FVector& DeltaObjVelocity, const float& ObjMass);
 	/// <summary>
 	/// Used to convert meters to centimeters as I prefer to use meters and its more common in physics overall
 	/// Needed when interacting with any UE5 systems such as shape sweeps and setting actor location
@@ -129,8 +133,6 @@ public:
 	/// <returns> Returns the magnitude of the inputted vector</returns>
 	inline float Magnitude(const FVector& FullVector);
 
-	inline float SquaredMagnitude(const FVector& FullVector);
-
 	/// <summary>
 	/// Projects the first vector onto the projection vector
 	/// Using equation V . P/|P|sqr * P
@@ -140,7 +142,7 @@ public:
 	/// <returns> Returns the projected vector</returns>
 	inline FVector ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector);
 	/// <summary>
-	/// 
+	/// Removes the Projection of Full vector on plane normal to get the vector part parallel to the normal
 	/// </summary>
 	/// <param name="FullVector"></param>
 	/// <param name="PlaneNormal"></param>
@@ -149,24 +151,59 @@ public:
 
 	inline float AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2);
 
+	/// <summary>
+	/// Used to tell direction and magnitude towards a direction
+	/// Also can serve as Squared Magnitude by inputting same vector for both parameters
+	/// </summary>
+	/// <param name="FullVector"></param>
+	/// <param name="VectorNormal"></param>
+	/// <returns></returns>
 	inline float DotProduct(const FVector& FullVector, const FVector& VectorNormal);
 
+	/// <summary>
+	/// Used to Get the normal between 2 vectors
+	/// </summary>
+	/// <param name="Vector1"></param>
+	/// <param name="Vector2"></param>
+	/// <returns></returns>
 	inline FVector CrossProduct(const FVector& Vector1, const FVector& Vector2);
+	/// <summary>
+	/// Uses Rodriguez' Rotation Formula to Rotate Vectors keeping their magnitude
+	/// </summary>
+	/// <param name="VectorToRotate"> The Vector that is rotated around the axis </param>
+	/// <param name="Axis"> Needs to be a unit vector to work </param>
+	/// <param name="Angle"> The Angle at which the vector needs to be rotated </param>
+	/// <param name="IsDegrees"> If this is true the degrees are converted to radians as that is the input taken  by rodriguez' formula </param>
+	/// <returns></returns>
+	inline FVector RotateVector(const FVector& VectorToRotate, const FVector& Axis , float Angle, bool IsDegrees = true);
 
+	/// <summary>
+	/// Unrealistic Version of Project On Plane that keeps the same magnitude essentially rotating it 
+	/// This is done to keep same velocity for the KCC for player experience but also means that I can't merge Movement Displacement and Gravity Displacement
+	/// As this would mean gravity also pushes character movement which creates the issue of first hitting an object in movement displacement and which stunts jumps or falling as the player wouldn't be blocked if these were merged
+	/// Not sure if I want to keep this to be honest
+	/// </summary>
+	/// <param name="FullVector"></param>
+	/// <param name="PlaneNormal"></param>
+	/// <returns></returns>
 	inline FVector ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal);
 
 #pragma endregion
+	
+	FVector Acceleration = FVector::ZeroVector;
+	FVector PreviousAcceleration = FVector::ZeroVector;
 
-	FVector Acceleration = FVector(0);
-	FVector PreviousAcceleration = FVector(0);
-
-	FVector PreviousPosition = FVector(0);
-	FVector Velocity = FVector(0);
+	FVector PreviousPosition = FVector::ZeroVector;
+	FVector Velocity = FVector::ZeroVector;
+	FVector TransformVelocity = FVector::ZeroVector;
 	FVector GravityNormal = FVector::UpVector;
 	float GravityMagnitude = -9.81f;
-	int MaxBounces = 5;
+	int MaxBounces = 10;
 	UPROPERTY(EditAnywhere)
 	float Mass = 70.0f;
+	float InvMass = 0.0f;
+
+	UGI_InputManager* InputManager;
 
 	float Bounciness = 1.0f;
 
@@ -182,6 +219,8 @@ public:
 	float ImpulseDeltaTime = 0.001f;
 
 	bool IsGrounded = false;
+
+	bool IsInContact = false;
 
 	UPROPERTY(EditAnywhere)
 	USkeletalMesh* CharMesh;
@@ -199,10 +238,32 @@ public:
 	int MaxJumpCount = 1;
 	int CurrentJumpCount = 0;
 
+	float CoefficientOfRestitution = 1.0f;
 	FVector FloorNormal = FVector::UpVector;
 
+	UFUNCTION()
+	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
+	/// <summary>
+	/// Calculates The Impulse of a collision based on relative velocity, mass, restitution coefficent and the surface normal
+	/// Only supports a collision between 2 objects at once. Adds 1 to e as to negate against all incoming velocity and then adds the extra bounce.
+	/// </summary>
+	/// <param name="RelativeVelocity"> Used to see how much relative velocity is moving away from collision</param>
+	/// <param name="TotalMass"> The Mass of Both Objects Colliding</param>
+	/// <param name="SurfaceNormal"> The surface normal the object is bouncing off of</param>
+	/// <param name="TotalImpulse"> The value to pass the resulting impulse to make sure to divide by mass to divy it up get the right ratio of the impulse</param>
+	void CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal, float& TotalImpulse);
+#pragma region Player Input
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	void MoveForward(float Axis, float DeltaTime);
+	void MoveRight(float Axis, float DeltaTime);
+	void JumpInput(float DeltaTime);
+
+
+#pragma endregion
+
+
 
 };

@@ -3,10 +3,11 @@
 
 #include "GI_InputManager.h"
 
-void UGI_InputManager::AddInputKey(const FKey& AddedKey)
+void UGI_InputManager::AddInputKey(const FKey& AddedKey, const int& MinFrames)
 {
 	InputKey* OriginalKey = new InputKey();
 	OriginalKey->Key = AddedKey.GetFName();
+	OriginalKey->MinFrames = MinFrames;
 	InputKeys.Emplace(OriginalKey);
 }
 
