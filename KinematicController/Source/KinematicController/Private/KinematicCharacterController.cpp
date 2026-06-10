@@ -13,14 +13,13 @@ AKinematicCharacterController::AKinematicCharacterController()
 	RootComponent = CreateDefaultSubobject<UCapsuleComponent>("Character Collider");
 	Collider = Cast<UCapsuleComponent>(RootComponent);
 
-	CapsuleHalfHeight -= CapsuleRadius;
 	CapsuleRadius -= SkinWidth;
 
 	Collider->SetCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
 	Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Collider->SetCollisionProfileName(TEXT("CustomKinematicCollision"));
 	Collider->SetGenerateOverlapEvents(true);
-	Collider->SetNotifyRigidBodyCollision(true);
+	Collider->SetMaxDepenetrationVelocity(NAME_None, 0.0f);
 
 	USkeletalMeshComponent* Skeleton = CreateDefaultSubobject<USkeletalMeshComponent>("Character Mesh");
 	Skeleton->SetSkeletalMesh(CharMesh);
@@ -42,12 +41,12 @@ void AKinematicCharacterController::BeginPlay()
 
 void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
 {
-	AddMovementInput(this, DeltaTime);
-	CalculatePhysicsForces(DeltaTime);
+	AddMovementInput(this);
+	CalculatePhysicsForces();
 	ApplyVelocity(DeltaTime);
 }
 
-void AKinematicCharacterController::AddForce(const FVector& AddedForce, const float& DeltaTime, const ForceType& TypeOfForce)
+void AKinematicCharacterController::AddForce(const FVector& AddedForce, const ForceType& TypeOfForce)
 {
 	if (TypeOfForce == ForceType::Force)
 	{
@@ -55,7 +54,7 @@ void AKinematicCharacterController::AddForce(const FVector& AddedForce, const fl
 	}
 	else if (TypeOfForce == ForceType::Impulse)	// Combined add force and impulse as impulse becomes a force after being divided by deltatime
 	{
-		Acceleration = (AddedForce / DeltaTime) * InvMass;
+		TotalImpulse += AddedForce;
 	}
 	else
 	{
@@ -88,11 +87,11 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	if (hit.bBlockingHit)
 	{
 		FloorNormal = hit.ImpactNormal;
-		FVector SnapToSurface = Normalized(CurrentVel) * (Magnitude(ConvertFromUE5Units(hit.Location) - CurrentPos) - SkinWidth);
+		
+		FVector SnapToSurface = Normalized(CurrentVel) * ((hit.Distance * 0.01f) - SkinWidth);
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
 		float Angle = AngleBetweenVectors(hit.ImpactNormal, GravityNormal);
-
 
 		if (Magnitude(SnapToSurface) <= SkinWidth)
 		{
@@ -102,19 +101,18 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		{
 			if (IsGravity)	// If the check is for gravity this makes sure there is no sliding due to gravity
 			{
-				if(CurrentBounces < 1)
-					++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
+				++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
 			LeftoverVelocity = ProjectAndScale(LeftoverVelocity, hit.ImpactNormal);
 		}
 		else
 		{
-			FVector HitNormalXZ = ProjectOnPlane(hit.ImpactNormal, GravityNormal);
+			FVector HitNormalXZ = Normalized(ProjectOnPlane(hit.ImpactNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
 			// 1 - limits dot product between 0 and 1
-			float Scale = 1 - DotProduct(Normalized(HitNormalXZ), -Normalized(ProjectOnPlane(InitialVel, GravityNormal)));
+			float Scale = 1 - DotProduct(HitNormalXZ, -Normalized(ProjectOnPlane(InitialVel, GravityNormal)));
 			if (IsGrounded && !IsGravity)
-			{
+			{				// Treats as flat wall if grounded and this is not the gravity check
 				LeftoverVelocity = Normalized(ProjectAndScale(ProjectOnPlane(LeftoverVelocity, GravityNormal), HitNormalXZ)) * Scale;
 			}
 			else
@@ -133,11 +131,14 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 {
+	float InvDeltaTime = 1 / DeltaTime;
 	FVector NewPosition = ConvertFromUE5Units(GetActorLocation());
 	
+	AddForce(TotalImpulse * InvDeltaTime, ForceType::Force);
+
 	CalculateVelocityVerletPosition(NewPosition, Velocity, DeltaTime);	
 
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Velocity: " + Velocity.ToCompactString() + " Current Acceleration " + Acceleration.ToCompactString());
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Impulse: " + TotalImpulse.ToCompactString() + "Force: " + (TotalImpulse * InvDeltaTime).ToCompactString());
 
 	PreviousPosition = ConvertFromUE5Units(GetActorLocation());
 
@@ -146,7 +147,6 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	TotalDisplacement += TransformVelocity * DeltaTime;	// Integrated transform velocity into total displacement
 	// May be better to use actual displacement for other time integration methods but velocity verlet should be fairly accurate
 	FVector GravityDisplacement = ProjectOnVector(TotalDisplacement, GravityNormal);
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Vertical Velocity: " + GravityDisplacement.ToCompactString() + " Current Acceleration " + Acceleration.ToCompactString());
 
 	FVector MovementDisplacement = TotalDisplacement - GravityDisplacement;
 	// Made so it adds to position as its velocity/displacement based rather than
@@ -168,7 +168,10 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	IsInContact = (TotalBounces > 0) ? true : false;
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "TotalBounces" + FString::FromInt(TotalBounces));
 
-	Velocity = (MovementDisplacement + GravityDisplacement) / DeltaTime;	// Updates Velocity based on collision displacement
+	Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
+
+	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Vertical Velocity: " + Velocity.ToCompactString() + " Current Acceleration " + Acceleration.ToCompactString());
+
 	// Used better way to solve issue instead of Manually adding radius and what not instead was able to get capsule location at collision for the displacement 
 	// Snap To Surface now uses this which now doesn't overlap with anything
 
@@ -177,22 +180,42 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	PreviousAcceleration = Acceleration;
 	Acceleration = FVector::ZeroVector;
 	TransformVelocity = FVector::ZeroVector;
+	TotalImpulse = FVector::ZeroVector;
 }
 
-void AKinematicCharacterController::CalculatePhysicsForces(const float& DeltaTime)
+void AKinematicCharacterController::CalculatePhysicsForces()
 {
-	AddForce(GravityNormal * GravityMagnitude, DeltaTime, ForceType::Acceleration);
+	AddForce(CalculateGravityAccel(GravityNormal, GravityMagnitude), ForceType::Acceleration);
 
 	float VelMag = Magnitude(Velocity);
 
 	if (IsInContact && VelMag > 0.001f)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
-		float NormalForce = DotProduct(FloorNormal, GravityNormal) * Mass * FMath::Abs(GravityMagnitude);
-		NormalForce *= FrictionCoefficent;
+		FVector FrictionAccel = CalculateFrictionAccel(Velocity, FloorNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-Normalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
-		AddForce(-Normalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce, DeltaTime, ForceType::Force);
+		AddForce(FrictionAccel, ForceType::Acceleration);
 	}
-	AddForce(-Velocity * DragCoefficent, DeltaTime, ForceType::Force);
+	AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
+}
+
+float AKinematicCharacterController::CalculateNormalForce(const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& FrictionCoeff)
+{
+	return DotProduct(SurfaceNormal, GravityDir) * ObjMass * FMath::Abs(GravityMag) * FrictionCoeff;
+}
+
+FVector AKinematicCharacterController::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
+{
+	return -Normalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
+}
+
+FVector AKinematicCharacterController::CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass)
+{
+	return -Vel * DragCoeff * InvertedMass;
+}
+
+FVector AKinematicCharacterController::CalculateGravityAccel(const FVector& GravityDir, const float& GravityMag)
+{
+	return GravityDir * GravityMag;
 }
 
 void AKinematicCharacterController::AddPlayerInputKeys()
@@ -206,7 +229,7 @@ void AKinematicCharacterController::AddPlayerInputKeys()
 	InputManager->AddInputKey(EKeys::SpaceBar, MinimumInputFrames);
 }
 
-void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const float& DeltaTime)
+void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 {
 	FVector MovementForce = FVector::ZeroVector;
 	FVector TransformForwardXZ = ProjectOnPlane(ConvertFromUE5Units(MovementAxis->GetActorForwardVector()), GravityNormal);
@@ -231,16 +254,19 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const
 		MovementForce += TransformRightXZ * MoveSpeed;
 	}
 
-	AddForce(MovementForce, DeltaTime, ForceType::Force);
+	AddForce(MovementForce, ForceType::Force);
 }
 
 
 
 void AKinematicCharacterController::OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	if (!OtherComp)
+		return;
 	// Hit Result now holds something as I am using hit and have switched to blocking collision as to truly benefit from overlapping 
 	// I would need to make my own physics engine and overlapping would've been fairly expensive comparitively even if I could do it
 	FVector SurfaceNormal = Hit.ImpactNormal;
+	
 	if (Hit.bStartPenetrating)	// If the Hit was already penetrating from the beginning compute penetration
 	{
 		FMTDResult PenetrationResult;
@@ -249,41 +275,37 @@ void AKinematicCharacterController::OnCharacterHit(UPrimitiveComponent* HitComp,
 			FVector CurrentLocation = Collider->GetComponentLocation();
 			FVector Depenetration = PenetrationResult.Direction * (PenetrationResult.Distance + 0.1f);
 			// Moves Collider Comp with sweep to avoid further penetration
-			Collider->MoveComponent(Depenetration, Collider->GetComponentQuat(), true);
+			Collider->MoveComponent(Depenetration, Collider->GetComponentRotation(), false);
 		}
 	}
-	// Need to figure out penetration depth
-
+	float VelocityImpulse;
 	// In the end just needed to get the closest point on the component's collision to the player actor and base surface normal from that
 	if (OtherComp->IsSimulatingPhysics())
 	{
+		// Some impulses can be very sudden and very large very weird but not the worst
 		FVector OtherObjVelocity = ConvertFromUE5Units(OtherComp->GetPhysicsLinearVelocity());
 		float OtherObjMass = OtherComp->GetMass();
 		// Couldn't find how to reference restitution if ue5 physics material
 
-		float VelocityImpulse;
-		
 		CalculateBounceImpulse(Velocity - OtherObjVelocity, Mass + OtherObjMass, SurfaceNormal, VelocityImpulse);
 		FVector CharacterImpulse = VelocityImpulse * SurfaceNormal;		// Currently done along Impact Normal but may combine with projection method and change to a reflection of Impact Normal based on Initial velocity direction
 
 		FVector OtherObjImpulse = VelocityImpulse * -SurfaceNormal;
 
-		AddForce(CharacterImpulse, ImpulseDeltaTime, ForceType::Impulse);
+		AddForce(CharacterImpulse, ForceType::Impulse);
 		OtherComp->AddImpulseAtLocation(OtherObjImpulse, Hit.ImpactPoint);
 	}
 	else
 	{
-		float VelocityImpulse;
 		CalculateBounceImpulse(Velocity, Mass, SurfaceNormal, VelocityImpulse);
-
-		AddForce(VelocityImpulse * SurfaceNormal, ImpulseDeltaTime, ForceType::Impulse);
+		AddForce(VelocityImpulse * SurfaceNormal, ForceType::Impulse);
 	}
 }
 
-void AKinematicCharacterController::CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal , float& TotalImpulse)
+void AKinematicCharacterController::CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal , float& Impulse)
 {
-	TotalImpulse = -(1 + CoefficientOfRestitution) * DotProduct(RelativeVelocity, SurfaceNormal);
-	TotalImpulse *= TotalMass;
+	Impulse = -(1 + CoefficientOfRestitution) * DotProduct(RelativeVelocity, SurfaceNormal);
+	Impulse *= TotalMass;
 }
 
 // Called to bind functionality to input

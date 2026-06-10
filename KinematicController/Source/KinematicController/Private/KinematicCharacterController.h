@@ -7,6 +7,8 @@
 
 #include "GI_InputManager.h"
 
+#include "Character.generated.h"
+
 #include "Components/CapsuleComponent.h"
 
 #include "KinematicCharacterController.generated.h"
@@ -49,12 +51,32 @@ public:
 	virtual void AsyncPhysicsTickActor(float DeltaTime, float SimTime) override;
 
 	void ApplyVelocity(const float& DeltaTime);
+#pragma region PhysicsForceCalc
 
-	void CalculatePhysicsForces(const float& DeltaTime);
+	void CalculatePhysicsForces();
 
-	void AddPlayerInputKeys();
+	float CalculateNormalForce(const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& FrictionCoeff);
+
+	// Made the following 3 functions for RK4 integration and for when acceleration needs computing won't use in this project except maybe to make things looka bit cleaner
 	
-	void AddMovementInput(AActor* MovementAxis, const float& DeltaTime);
+	FVector CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff);
+
+	FVector CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass);
+
+	FVector CalculateGravityAccel(const FVector& GravityDir, const float& GravityMag);
+
+	/// <summary>
+	/// Calculates The Impulse of a collision based on relative velocity, mass, restitution coefficent and the surface normal
+	/// Only supports a collision between 2 objects at once. Adds 1 to e as to negate against all incoming velocity and then adds the extra bounce.
+	/// </summary>
+	/// <param name="RelativeVelocity"> Used to see how much relative velocity is moving away from collision</param>
+	/// <param name="TotalMass"> The Mass of Both Objects Colliding</param>
+	/// <param name="SurfaceNormal"> The surface normal the object is bouncing off of</param>
+	/// <param name="Impulse"> The value to pass the resulting impulse to make sure to divide by mass to divy it up get the right ratio of the impulse</param>
+	void CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal, float& Impulse);
+#pragma endregion
+
+
 
 #pragma region TimeIntegrationMethods
 	
@@ -95,7 +117,7 @@ public:
 	/// <param name="AddedForce"> Used as base force or impulse and doesn't use const for the sake of the impulse </param>
 	/// <param name="DeltaTime"> Turns acceleration into velocity and Impulse into force </param>
 	/// <param name="TypeOfForce"> Checks whether the user wants the force to be an impulse or not</param>
-	void AddForce(const FVector& AddedForce, const float& DeltaTime, const ForceType& TypeOfForce);
+	void AddForce(const FVector& AddedForce, const ForceType& TypeOfForce);
 
 	void AddTransformVel(const FVector& AddedTransform);
 
@@ -103,6 +125,8 @@ public:
 	
 	inline float Square(const float& NumberToSquare);
 	inline float Power(const float& MultNum, const int& Power);
+	float Sqrt(const float& SqrtNum);
+	float InvSqrt(const float& SqrtNum);
 	inline void CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum);
 	/// <summary>
 	/// Used to convert meters to centimeters as I prefer to use meters and its more common in physics overall
@@ -196,16 +220,30 @@ public:
 	FVector PreviousPosition = FVector::ZeroVector;
 	FVector Velocity = FVector::ZeroVector;
 	FVector TransformVelocity = FVector::ZeroVector;
+	FVector TotalImpulse = FVector::ZeroVector;
+	float ImpulseDeltaTime = 0.02f;
+
 	FVector GravityNormal = FVector::UpVector;
 	float GravityMagnitude = -9.81f;
-	int MaxBounces = 10;
-	UPROPERTY(EditAnywhere)
+
 	float Mass = 70.0f;
 	float InvMass = 0.0f;
 
-	UGI_InputManager* InputManager;
+	float CoefficientOfRestitution = 0.5f;
 
-	float Bounciness = 1.0f;
+	float FrictionCoefficent = 0.5f;
+
+	float DragCoefficent = 0.1f;
+
+	FVector FloorNormal = FVector::UpVector;
+
+	float MaxAngle = 80.0f;
+
+	int MaxBounces = 10;
+
+	bool IsGrounded = false;
+
+	bool IsInContact = false;
 
 	UCapsuleComponent* Collider;
 
@@ -214,20 +252,10 @@ public:
 
 	float SkinWidth = 0.02f;
 
-	float MaxAngle = 80.0f;
-
-	float ImpulseDeltaTime = 0.001f;
-
-	bool IsGrounded = false;
-
-	bool IsInContact = false;
-
 	UPROPERTY(EditAnywhere)
 	USkeletalMesh* CharMesh;
 
-	float FrictionCoefficent = 1.0f;
-
-	float DragCoefficent = 0.1f;
+	UGI_InputManager* InputManager;
 
 	float MaxSpeed = 10.0f;
 
@@ -238,21 +266,11 @@ public:
 	int MaxJumpCount = 1;
 	int CurrentJumpCount = 0;
 
-	float CoefficientOfRestitution = 1.0f;
-	FVector FloorNormal = FVector::UpVector;
+
 
 	UFUNCTION()
 	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
-	/// <summary>
-	/// Calculates The Impulse of a collision based on relative velocity, mass, restitution coefficent and the surface normal
-	/// Only supports a collision between 2 objects at once. Adds 1 to e as to negate against all incoming velocity and then adds the extra bounce.
-	/// </summary>
-	/// <param name="RelativeVelocity"> Used to see how much relative velocity is moving away from collision</param>
-	/// <param name="TotalMass"> The Mass of Both Objects Colliding</param>
-	/// <param name="SurfaceNormal"> The surface normal the object is bouncing off of</param>
-	/// <param name="TotalImpulse"> The value to pass the resulting impulse to make sure to divide by mass to divy it up get the right ratio of the impulse</param>
-	void CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal, float& TotalImpulse);
 #pragma region Player Input
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -261,7 +279,9 @@ public:
 	void MoveRight(float Axis, float DeltaTime);
 	void JumpInput(float DeltaTime);
 
+	void AddPlayerInputKeys();
 
+	void AddMovementInput(AActor* MovementAxis);
 #pragma endregion
 
 
