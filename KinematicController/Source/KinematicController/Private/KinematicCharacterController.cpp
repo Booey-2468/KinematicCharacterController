@@ -19,6 +19,7 @@ AKinematicCharacterController::AKinematicCharacterController()
 	Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Collider->SetCollisionProfileName(TEXT("CustomKinematicCollision"));
 	Collider->SetGenerateOverlapEvents(true);
+	Collider->SetNotifyRigidBodyCollision(true);
 	Collider->SetMaxDepenetrationVelocity(NAME_None, 0.0f);
 
 	USkeletalMeshComponent* Skeleton = CreateDefaultSubobject<USkeletalMeshComponent>("Character Mesh");
@@ -44,6 +45,7 @@ void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float
 	AddMovementInput(this);
 	CalculatePhysicsForces();
 	ApplyVelocity(DeltaTime);
+	InputManager->TempResetKey(EKeys::W);
 }
 
 void AKinematicCharacterController::AddForce(const FVector& AddedForce, const ForceType& TypeOfForce)
@@ -134,11 +136,11 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	float InvDeltaTime = 1 / DeltaTime;
 	FVector NewPosition = ConvertFromUE5Units(GetActorLocation());
 	
-	AddForce(TotalImpulse * InvDeltaTime, ForceType::Force);
-
+	Velocity += TotalImpulse * InvMass; // Changed Impulses to be applied directly to velocity as they are instant changes and p = MV and J = delta P/Momentum so I can just * InvMass 
+	// Because of this I don't have to worry about how much of a timestep should it be divided by to be considered instantaneous
 	CalculateVelocityVerletPosition(NewPosition, Velocity, DeltaTime);	
 
-	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Impulse: " + TotalImpulse.ToCompactString() + "Force: " + (TotalImpulse * InvDeltaTime).ToCompactString());
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Impulse: " + TotalImpulse.ToCompactString() + "Force: " + (TotalImpulse * InvMass).ToCompactString());
 
 	PreviousPosition = ConvertFromUE5Units(GetActorLocation());
 
@@ -218,47 +220,6 @@ FVector AKinematicCharacterController::CalculateGravityAccel(const FVector& Grav
 	return GravityDir * GravityMag;
 }
 
-void AKinematicCharacterController::AddPlayerInputKeys()
-{
-	int MinimumInputFrames = 5;
-	InputManager = Cast<UGI_InputManager>(GetGameInstance());
-	InputManager->AddInputKey(EKeys::W, MinimumInputFrames);
-	InputManager->AddInputKey(EKeys::S, MinimumInputFrames);
-	InputManager->AddInputKey(EKeys::A, MinimumInputFrames);
-	InputManager->AddInputKey(EKeys::D, MinimumInputFrames);
-	InputManager->AddInputKey(EKeys::SpaceBar, MinimumInputFrames);
-}
-
-void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
-{
-	FVector MovementForce = FVector::ZeroVector;
-	FVector TransformForwardXZ = ProjectOnPlane(ConvertFromUE5Units(MovementAxis->GetActorForwardVector()), GravityNormal);
-	FVector TransformRightXZ = ProjectOnPlane(ConvertFromUE5Units(MovementAxis->GetActorRightVector()), GravityNormal);
-
-	if (InputManager->GetInputKey(EKeys::W) && InputManager->GetInputKey(EKeys::W)->HasBeenPressed)
-	{
-		MovementForce += TransformForwardXZ * MoveSpeed;
-	}
-	if (InputManager->GetInputKey(EKeys::S) && InputManager->GetInputKey(EKeys::S)->HasBeenPressed)
-	{
-		MovementForce -= TransformForwardXZ * MoveSpeed;
-
-	}
-	if (InputManager->GetInputKey(EKeys::A) && InputManager->GetInputKey(EKeys::A)->HasBeenPressed)
-	{
-		MovementForce -= TransformRightXZ * MoveSpeed;
-
-	}
-	if (InputManager->GetInputKey(EKeys::D) && InputManager->GetInputKey(EKeys::D)->HasBeenPressed)
-	{
-		MovementForce += TransformRightXZ * MoveSpeed;
-	}
-
-	AddForce(MovementForce, ForceType::Force);
-}
-
-
-
 void AKinematicCharacterController::OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if (!OtherComp)
@@ -308,11 +269,7 @@ void AKinematicCharacterController::CalculateBounceImpulse(const FVector& Relati
 	Impulse *= TotalMass;
 }
 
-// Called to bind functionality to input
-void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-}
+
 
 inline float AKinematicCharacterController::Square(const float& NumberToSquare)
 {
@@ -456,4 +413,91 @@ void AKinematicCharacterController::CalculateRK4Acceleration(const FVector& Posi
 
 #pragma endregion
 
+#pragma region Player Input
+// Called to bind functionality to input
+void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	if (UEnhancedInputComponent* UserInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+	{
+		UserInput->BindAction(MoveForwardButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::Move);
+		UserInput->BindAction(JumpButton, ETriggerEvent::Started, this, &AKinematicCharacterController::StartJump);
+		UserInput->BindAction(JumpButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::JumpInput);
+		UserInput->BindAction(JumpButton, ETriggerEvent::Completed, this, &AKinematicCharacterController::EndJump);
+	}
+}
 
+void AKinematicCharacterController::Move(const FInputActionValue& InputVal)
+{
+	FVector2D AxisVal = InputVal.Get<FVector2D>();	// Stores 2D WASD value
+	InputKey* CurrentKey;
+	if (AxisVal.X > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::W)))	// Checks AxisVal X and if getting the input key is valid then it updates the key in the input manager
+		InputManager->UpdateKeyData(*CurrentKey->Key);
+
+	else if(AxisVal.X < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::S)))
+		InputManager->UpdateKeyData(*CurrentKey->Key);	// Uses the worlds real time delta seconds as I can't get it from InputVal
+
+	// Checks AxisVal Y and if getting the input key is valid then it updates the key in the input manager
+	if(AxisVal.Y < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::A)))	
+		InputManager->UpdateKeyData(*CurrentKey->Key);
+
+	else if(AxisVal.Y > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::D)))
+		InputManager->UpdateKeyData(*CurrentKey->Key);
+}
+
+void AKinematicCharacterController::JumpInput(const FInputActionValue& InputVal)
+{
+	if (InputVal.Get<bool>())
+	{
+		InputManager->UpdateKeyData(EKeys::SpaceBar, GetWorld()->DeltaRealTimeSeconds);
+	}
+}
+
+void AKinematicCharacterController::StartJump(const FInputActionValue& InputVal)
+{
+}
+
+void AKinematicCharacterController::EndJump(const FInputActionValue& InputVal)
+{
+}
+
+void AKinematicCharacterController::AddPlayerInputKeys()
+{
+	int MinimumInputFrames = 5;
+	InputManager = Cast<UGI_InputManager>(GetGameInstance());
+	InputManager->AddInputKey(EKeys::W, MinimumInputFrames);
+	InputManager->AddInputKey(EKeys::S, MinimumInputFrames);
+	InputManager->AddInputKey(EKeys::A, MinimumInputFrames);
+	InputManager->AddInputKey(EKeys::D, MinimumInputFrames);
+	InputManager->AddInputKey(EKeys::SpaceBar, MinimumInputFrames);
+}
+
+void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
+{
+	FVector MovementForce = FVector::ZeroVector;
+	FVector TransformForwardXZ = ProjectOnPlane(ConvertFromUE5Units(MovementAxis->GetActorForwardVector()), GravityNormal);
+	FVector TransformRightXZ = ProjectOnPlane(ConvertFromUE5Units(MovementAxis->GetActorRightVector()), GravityNormal);
+	InputKey* Key;
+
+	if ((Key = InputManager->GetInputKey(EKeys::W)) && Key->HasBeenPressed)	// Tidied up so that GetInput Key isn't called twice
+	{
+		MovementForce += TransformForwardXZ * MoveSpeed;
+	}
+	if ((Key = InputManager->GetInputKey(EKeys::S)) && Key->HasBeenPressed)
+	{
+		MovementForce -= TransformForwardXZ * MoveSpeed;
+
+	}
+	if ((Key = InputManager->GetInputKey(EKeys::A)) && Key->HasBeenPressed)
+	{
+		MovementForce -= TransformRightXZ * MoveSpeed;
+
+	}
+	if ((Key = InputManager->GetInputKey(EKeys::D)) && Key->HasBeenPressed)
+	{
+		MovementForce += TransformRightXZ * MoveSpeed;
+	}
+
+	AddForce(MovementForce, ForceType::Force);
+}
+#pragma endregion

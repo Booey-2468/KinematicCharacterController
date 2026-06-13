@@ -11,6 +11,8 @@
 
 #include "Components/CapsuleComponent.h"
 
+#include "EnhancedInputComponent.h"
+
 #include "KinematicCharacterController.generated.h"
 
 enum ForceType
@@ -272,12 +274,21 @@ public:
 	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 #pragma region Player Input
+	UPROPERTY(EditAnywhere)
+	UInputAction* MoveForwardButton;
+	UPROPERTY(EditAnywhere)
+	UInputAction* MoveRightButton;
+	UPROPERTY(EditAnywhere)
+	UInputAction* JumpButton;
+
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	void MoveForward(float Axis, float DeltaTime);
-	void MoveRight(float Axis, float DeltaTime);
-	void JumpInput(float DeltaTime);
+	void Move(const FInputActionValue& InputVal);
+	void JumpInput(const FInputActionValue& InputVal);
+	void StartJump(const FInputActionValue& InputVal);
+	void EndJump(const FInputActionValue& InputVal);
+
 
 	void AddPlayerInputKeys();
 
