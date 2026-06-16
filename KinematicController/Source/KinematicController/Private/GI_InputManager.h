@@ -15,7 +15,7 @@ struct InputKey
 	int FrameCount = 0;
 	int MinFrames = 0;
 	bool HasBeenPressed = false;
-	FKey* Key = nullptr;
+	FKey Key = FKey();	// Needed to use value as ue5 FKey values are const meaning you can't really reference them
 };
 UCLASS()
 class UGI_InputManager : public UGameInstance
@@ -25,7 +25,7 @@ class UGI_InputManager : public UGameInstance
 	TArray<InputKey*> InputKeys = TArray<InputKey*>();
 
 public:
-	void AddInputKey(FKey& AddedKey, const int& MinFrames);
+	void AddInputKey(const FKey& AddedKey, const int& MinFrames);
 	void RemoveInputKey(const FKey& RemovedKey);
 	void TempResetKey(const FKey& KeyToReset);
 	InputKey* GetInputKey(const FKey& KeyToGet);

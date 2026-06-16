@@ -37,15 +37,24 @@ void AKinematicCharacterController::BeginPlay()
 		Collider->OnComponentHit.AddDynamic(this, &AKinematicCharacterController::OnCharacterHit);
 	}
 	AddPlayerInputKeys();
+
+	Camera = GetWorld()->SpawnActor<ACA_PlayerCamera>(ACA_PlayerCamera::StaticClass(), GetActorTransform());
+
+	Camera->FocusedActor = this;
+
 	InvMass = 1 / Mass;	// Need to do again if mass is ever changed
 }
 
 void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
 {
-	AddMovementInput(this);
+	AddMovementInput(Camera);
 	CalculatePhysicsForces();
 	ApplyVelocity(DeltaTime);
 	InputManager->TempResetKey(EKeys::W);
+	InputManager->TempResetKey(EKeys::A);
+	InputManager->TempResetKey(EKeys::S);
+	InputManager->TempResetKey(EKeys::D);
+
 }
 
 void AKinematicCharacterController::AddForce(const FVector& AddedForce, const ForceType& TypeOfForce)
@@ -179,7 +188,7 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 
 	SetActorLocation(NewPosition);
 
-	PreviousAcceleration = Acceleration;
+   	PreviousAcceleration = Acceleration;
 	Acceleration = FVector::ZeroVector;
 	TransformVelocity = FVector::ZeroVector;
 	TotalImpulse = FVector::ZeroVector;
@@ -420,7 +429,8 @@ void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* P
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 	if (UEnhancedInputComponent* UserInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		UserInput->BindAction(MoveForwardButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::Move);
+		UserInput->BindAction(MoveButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::Move);
+		UserInput->BindAction(TurnCamAction, ETriggerEvent::Triggered, this, &AKinematicCharacterController::TurnCam);
 		UserInput->BindAction(JumpButton, ETriggerEvent::Started, this, &AKinematicCharacterController::StartJump);
 		UserInput->BindAction(JumpButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::JumpInput);
 		UserInput->BindAction(JumpButton, ETriggerEvent::Completed, this, &AKinematicCharacterController::EndJump);
@@ -432,17 +442,25 @@ void AKinematicCharacterController::Move(const FInputActionValue& InputVal)
 	FVector2D AxisVal = InputVal.Get<FVector2D>();	// Stores 2D WASD value
 	InputKey* CurrentKey;
 	if (AxisVal.X > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::W)))	// Checks AxisVal X and if getting the input key is valid then it updates the key in the input manager
-		InputManager->UpdateKeyData(*CurrentKey->Key);
+		InputManager->UpdateKeyData(CurrentKey->Key);
 
 	else if(AxisVal.X < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::S)))
-		InputManager->UpdateKeyData(*CurrentKey->Key);	// Uses the worlds real time delta seconds as I can't get it from InputVal
+		InputManager->UpdateKeyData(CurrentKey->Key);	// Uses the worlds real time delta seconds as I can't get it from InputVal
 
 	// Checks AxisVal Y and if getting the input key is valid then it updates the key in the input manager
 	if(AxisVal.Y < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::A)))	
-		InputManager->UpdateKeyData(*CurrentKey->Key);
+		InputManager->UpdateKeyData(CurrentKey->Key);
 
 	else if(AxisVal.Y > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::D)))
-		InputManager->UpdateKeyData(*CurrentKey->Key);
+		InputManager->UpdateKeyData(CurrentKey->Key);
+}
+
+void AKinematicCharacterController::TurnCam(const FInputActionValue& InputVal)
+{
+	if (Camera)
+	{
+		Camera->CameraMovementAxis = InputVal.Get<FVector2D>();
+	}
 }
 
 void AKinematicCharacterController::JumpInput(const FInputActionValue& InputVal)

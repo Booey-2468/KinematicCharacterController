@@ -7,6 +7,8 @@
 
 #include "GI_InputManager.h"
 
+#include "CA_PlayerCamera.h"
+
 #include "Character.generated.h"
 
 #include "Components/CapsuleComponent.h"
@@ -268,16 +270,16 @@ public:
 	int MaxJumpCount = 1;
 	int CurrentJumpCount = 0;
 
-
-
 	UFUNCTION()
 	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 #pragma region Player Input
+
+	ACA_PlayerCamera* Camera = nullptr;
 	UPROPERTY(EditAnywhere)
-	UInputAction* MoveForwardButton;
+	UInputAction* MoveButton;
 	UPROPERTY(EditAnywhere)
-	UInputAction* MoveRightButton;
+	UInputAction* TurnCamAction;
 	UPROPERTY(EditAnywhere)
 	UInputAction* JumpButton;
 
@@ -285,6 +287,7 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	void Move(const FInputActionValue& InputVal);
+	void TurnCam(const FInputActionValue& InputVal);
 	void JumpInput(const FInputActionValue& InputVal);
 	void StartJump(const FInputActionValue& InputVal);
 	void EndJump(const FInputActionValue& InputVal);
