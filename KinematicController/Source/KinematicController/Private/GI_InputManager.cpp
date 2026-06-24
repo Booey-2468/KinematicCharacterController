@@ -3,8 +3,27 @@
 
 #include "GI_InputManager.h"
 
+UGI_InputManager::~UGI_InputManager()
+{
+	if (InputKeys.Num() < 1)
+		return;
+	for (int i = 0; i < InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
+	{
+		delete InputKeys[i];
+	}
+	InputKeys.Empty();
+}
+
 void UGI_InputManager::AddInputKey(const FKey& AddedKey, const int& MinFrames)
 {
+	if (InputKeys.Num() > 0)	// Only checked if InputKeys is not empty
+	{
+		for (int i = 0; i < InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
+		{
+			if (InputKeys[i]->Key == AddedKey)		// Now used to make sure multiple instances aren't added at once
+				return;
+		}
+	}
 	InputKey* OriginalKey = new InputKey();
 	OriginalKey->Key = AddedKey;
 	OriginalKey->MinFrames = MinFrames;
@@ -13,7 +32,9 @@ void UGI_InputManager::AddInputKey(const FKey& AddedKey, const int& MinFrames)
 
 void UGI_InputManager::RemoveInputKey(const FKey& RemovedKey)
 {
-	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
+	if (InputKeys.Num() < 1)
+		return;
+	for (int i = 0; i < InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
 	{
 		if (InputKeys[i]->Key == RemovedKey)
 		{
@@ -27,7 +48,9 @@ void UGI_InputManager::RemoveInputKey(const FKey& RemovedKey)
 
 void UGI_InputManager::TempResetKey(const FKey& KeyToReset)
 {
-	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
+	if (InputKeys.Num() < 1)
+		return;
+	for (int i = 0; i < InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
 	{
 		if (InputKeys[i]->Key == KeyToReset)
 		{
@@ -41,7 +64,9 @@ void UGI_InputManager::TempResetKey(const FKey& KeyToReset)
 
 InputKey* UGI_InputManager::GetInputKey(const FKey& KeyToGet)
 {
-	for (int i = 0; i <= InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
+	if (InputKeys.Num() < 1)
+		return nullptr;
+	for (int i = 0; i < InputKeys.Num(); ++i)	// Uses ++i as its slightly quicker
 	{
 		if (InputKeys[i]->Key == KeyToGet)
 		{

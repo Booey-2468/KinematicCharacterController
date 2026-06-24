@@ -37,17 +37,29 @@ void AKinematicCharacterController::BeginPlay()
 		Collider->OnComponentHit.AddDynamic(this, &AKinematicCharacterController::OnCharacterHit);
 	}
 	AddPlayerInputKeys();
-
+	
 	Camera = GetWorld()->SpawnActor<ACA_PlayerCamera>(ACA_PlayerCamera::StaticClass(), GetActorTransform());
 
 	Camera->FocusedActor = this;
+	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+	{
+		PlayerController->PlayerCameraManager->SetViewTarget(Camera);
+		Camera->GetCameraComponent();
+
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+		{
+			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+		}
+	}
 
 	InvMass = 1 / Mass;	// Need to do again if mass is ever changed
 }
 
 void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
 {
-	AddMovementInput(Camera);
+	if (Camera)
+		AddMovementInput(Camera);
+
 	CalculatePhysicsForces();
 	ApplyVelocity(DeltaTime);
 	InputManager->TempResetKey(EKeys::W);
@@ -59,7 +71,9 @@ void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float
 
 void AKinematicCharacterController::AddForce(const FVector& AddedForce, const ForceType& TypeOfForce)
 {
-	if (TypeOfForce == ForceType::Force)
+	if (AddedForce.ContainsNaN())	// Ensures input Vectors don't contain unidentified or nigh infinite numbers and blocks entry if so
+		return;
+	else if (TypeOfForce == ForceType::Force)
 	{
 		Acceleration += AddedForce * InvMass;	// Changed From Velocity to Acceleration as a store as not all time Integration methods are based on velocity and allows for more accurate seperation
 	}
@@ -67,7 +81,7 @@ void AKinematicCharacterController::AddForce(const FVector& AddedForce, const Fo
 	{
 		TotalImpulse += AddedForce;
 	}
-	else
+	else if(TypeOfForce == ForceType::Acceleration)
 	{
 		Acceleration += AddedForce;
 	}
@@ -102,7 +116,10 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		FVector SnapToSurface = Normalized(CurrentVel) * ((hit.Distance * 0.01f) - SkinWidth);
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
-		float Angle = AngleBetweenVectors(hit.ImpactNormal, GravityNormal);
+		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Only ever returns 0
+
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Hit Angle: " + FString::FromInt((int)Angle));
+
 
 		if (Magnitude(SnapToSurface) <= SkinWidth)
 		{
@@ -115,11 +132,11 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
-			LeftoverVelocity = ProjectAndScale(LeftoverVelocity, hit.ImpactNormal);
+			LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal);
 		}
 		else
 		{
-			FVector HitNormalXZ = Normalized(ProjectOnPlane(hit.ImpactNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
+			FVector HitNormalXZ = Normalized(ProjectOnPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
 			// 1 - limits dot product between 0 and 1
 			float Scale = 1 - DotProduct(HitNormalXZ, -Normalized(ProjectOnPlane(InitialVel, GravityNormal)));
 			if (IsGrounded && !IsGravity)
@@ -128,7 +145,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			}
 			else
 			{
-				LeftoverVelocity = ProjectAndScale(LeftoverVelocity, hit.ImpactNormal) * Scale;
+				LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal) * Scale;
 			}
 			// Could also add momentum and bounciness to this by adding velocity from the impulse
 			// Optonally could add impulses to other objects if physics is enabled on them
@@ -148,8 +165,6 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	Velocity += TotalImpulse * InvMass; // Changed Impulses to be applied directly to velocity as they are instant changes and p = MV and J = delta P/Momentum so I can just * InvMass 
 	// Because of this I don't have to worry about how much of a timestep should it be divided by to be considered instantaneous
 	CalculateVelocityVerletPosition(NewPosition, Velocity, DeltaTime);	
-
-	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Impulse: " + TotalImpulse.ToCompactString() + "Force: " + (TotalImpulse * InvMass).ToCompactString());
 
 	PreviousPosition = ConvertFromUE5Units(GetActorLocation());
 
@@ -179,9 +194,10 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	IsInContact = (TotalBounces > 0) ? true : false;
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "TotalBounces" + FString::FromInt(TotalBounces));
 
-	Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
+	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
+		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
 
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Vertical Velocity: " + Velocity.ToCompactString() + " Current Acceleration " + Acceleration.ToCompactString());
+	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, " Current Acceleration " + Acceleration.ToCompactString());
 
 	// Used better way to solve issue instead of Manually adding radius and what not instead was able to get capsule location at collision for the displacement 
 	// Snap To Surface now uses this which now doesn't overlap with anything
@@ -368,7 +384,7 @@ void AKinematicCharacterController::CalculateVelocityVerletPosition(FVector& New
 {
 	// Should technically use previous acceleration but might use acceleration to keep responsiveness
 	NewPosition += NewVelocity * DeltaTime + 0.5f * PreviousAcceleration * DeltaTime * DeltaTime;
-	NewVelocity += 0.5 * (PreviousAcceleration + Acceleration) * DeltaTime;	// Needs to be done afterwards as Acceleration is seperately accounted for via velocity verlet equation
+	NewVelocity += 0.5f * (PreviousAcceleration + Acceleration) * DeltaTime;	// Needs to be done afterwards as Acceleration is seperately accounted for via velocity verlet equation
 }
 
 void AKinematicCharacterController::CalculateVerletPosition(const FVector& PrevPos, FVector& NewPos, FVector& NewVelocity, const float& DeltaTime)
@@ -427,6 +443,8 @@ void AKinematicCharacterController::CalculateRK4Acceleration(const FVector& Posi
 void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	// Need to get local player to be able to get subsystem
 	if (UEnhancedInputComponent* UserInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		UserInput->BindAction(MoveButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::Move);
@@ -441,17 +459,17 @@ void AKinematicCharacterController::Move(const FInputActionValue& InputVal)
 {
 	FVector2D AxisVal = InputVal.Get<FVector2D>();	// Stores 2D WASD value
 	InputKey* CurrentKey;
-	if (AxisVal.X > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::W)))	// Checks AxisVal X and if getting the input key is valid then it updates the key in the input manager
+	if (AxisVal.Y > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::W)))	// Checks AxisVal Y and if getting the input key is valid then it updates the key in the input manager
 		InputManager->UpdateKeyData(CurrentKey->Key);
 
-	else if(AxisVal.X < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::S)))
+	else if(AxisVal.Y < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::S)))
 		InputManager->UpdateKeyData(CurrentKey->Key);	// Uses the worlds real time delta seconds as I can't get it from InputVal
 
-	// Checks AxisVal Y and if getting the input key is valid then it updates the key in the input manager
-	if(AxisVal.Y < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::A)))	
+	// Checks AxisVal X and if getting the input key is valid then it updates the key in the input manager
+	if(AxisVal.X < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::A)))	
 		InputManager->UpdateKeyData(CurrentKey->Key);
 
-	else if(AxisVal.Y > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::D)))
+	else if(AxisVal.X > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::D)))
 		InputManager->UpdateKeyData(CurrentKey->Key);
 }
 
@@ -492,30 +510,42 @@ void AKinematicCharacterController::AddPlayerInputKeys()
 
 void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 {
+	FVector VelocityXZ = ProjectOnPlane(Velocity, GravityNormal);
+
+	if (Magnitude(VelocityXZ) > MaxSpeed)
+		return;
+
 	FVector MovementForce = FVector::ZeroVector;
-	FVector TransformForwardXZ = ProjectOnPlane(ConvertFromUE5Units(MovementAxis->GetActorForwardVector()), GravityNormal);
-	FVector TransformRightXZ = ProjectOnPlane(ConvertFromUE5Units(MovementAxis->GetActorRightVector()), GravityNormal);
+	FVector TransformForwardXZ = Normalized(ProjectOnPlane(MovementAxis->GetActorForwardVector(), GravityNormal));
+	FVector TransformRightXZ = Normalized(ProjectOnPlane(MovementAxis->GetActorRightVector(), GravityNormal));
+
+
 	InputKey* Key;
 
 	if ((Key = InputManager->GetInputKey(EKeys::W)) && Key->HasBeenPressed)	// Tidied up so that GetInput Key isn't called twice
 	{
-		MovementForce += TransformForwardXZ * MoveSpeed;
+		MovementForce += TransformForwardXZ;
 	}
 	if ((Key = InputManager->GetInputKey(EKeys::S)) && Key->HasBeenPressed)
 	{
-		MovementForce -= TransformForwardXZ * MoveSpeed;
+		MovementForce -= TransformForwardXZ;
 
 	}
 	if ((Key = InputManager->GetInputKey(EKeys::A)) && Key->HasBeenPressed)
 	{
-		MovementForce -= TransformRightXZ * MoveSpeed;
+		MovementForce -= TransformRightXZ;
 
 	}
 	if ((Key = InputManager->GetInputKey(EKeys::D)) && Key->HasBeenPressed)
 	{
-		MovementForce += TransformRightXZ * MoveSpeed;
+		MovementForce += TransformRightXZ;
 	}
 
-	AddForce(MovementForce, ForceType::Force);
+	if (MovementForce.IsNearlyZero())	// Finally realised issue movement force is initially set to 0 and when normalizing you do 0/0 hence an infinite nan(ind) number
+		return;
+
+	MovementForce = Normalized(MovementForce) * MoveSpeed;	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
+
+	AddForce(MovementForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why
 }
 #pragma endregion

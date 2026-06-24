@@ -5,8 +5,8 @@
 
 ACA_PlayerCamera::ACA_PlayerCamera()
 {
-	SetActorTickEnabled(true);
 	PrimaryActorTick.bCanEverTick = true;
+	
 }
 
 void ACA_PlayerCamera::MoveCamera(const float& DeltaTime)
@@ -14,22 +14,28 @@ void ACA_PlayerCamera::MoveCamera(const float& DeltaTime)
 	if (!FocusedActor)
 		return;
 
+	CurrentDeltaTime += DeltaTime;
+	CurrentDeltaTime = FMath::Clamp(CurrentDeltaTime, 0.0f, LerpMaxDuration);
+
 	if (CameraMovementAxis != FVector2D::ZeroVector)
 	{
 		FVector NewRotation = GetActorRotation().Euler();
 
-		float XAxisRot = CameraMovementAxis.X * MouseSensitivity * DeltaTime + NewRotation.X;
-		float YAxisRot = CameraMovementAxis.Y * MouseSensitivity * DeltaTime + NewRotation.Y;
+		float PitchRot = (CameraMovementAxis.Y * MouseSensitivity * DeltaTime) + NewRotation.Y;
+		float YawRot = (CameraMovementAxis.X * MouseSensitivity * DeltaTime) + NewRotation.Z;
 
-		NewRotation = FVector(FMath::Clamp(XAxisRot, -90.0f, 90.0f), YAxisRot, NewRotation.Z);
+		PitchRot = FMath::Lerp(NewRotation.Y, PitchRot, CurrentDeltaTime / LerpMaxDuration);
+		YawRot = FMath::Lerp(NewRotation.Z, YawRot, CurrentDeltaTime / LerpMaxDuration);
 
-		SetActorRotation(NewRotation.Rotation());
+		NewRotation = FVector(NewRotation.X, FMath::Clamp(PitchRot, -89.91f, 89.91f) , YawRot);	// Clamp cannot be above 89.91 to prevent gimbal locking as this prevents any yaw input working propely while in this state
+
+		SetActorRotation(FRotator::MakeFromEuler(NewRotation));	// Don't use .Rotation for this as that doesn't handle euler only direction vectors
 	}
 	FVector CurrentLocation = FocusedActor->GetActorLocation();
 	FVector CameraMovement = -GetActorForwardVector() * CameraMaxDist;
 	
 	FHitResult Hit;
-	FCollisionShape CameraBounds = FCollisionShape::MakeSphere(2.0f);
+	FCollisionShape CameraBounds = FCollisionShape::MakeSphere(10.0f);
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(FocusedActor);
 
@@ -43,14 +49,10 @@ void ACA_PlayerCamera::MoveCamera(const float& DeltaTime)
 	CurrentLocation = FMath::Lerp(GetActorLocation(), CurrentLocation + CameraMovement, CurrentDeltaTime/LerpMaxDuration);
 	SetActorLocation(CurrentLocation);
 
-	if (CameraMovementAxis == FVector2D::ZeroVector)	// Increments by deltatime if camera is static allowing for linear camera movement and a minium amountof time for the camera to move positions
-	{
-		CurrentDeltaTime += DeltaTime;
-		CurrentDeltaTime = FMath::Clamp(CurrentDeltaTime, 0.0f, LerpMaxDuration);
-	}
-	else
+	if(CameraMovementAxis != FVector2d::ZeroVector)
 	{
 		CameraMovementAxis = FVector2D::ZeroVector;
+		CurrentDeltaTime = 0.0f;
 	}
 	
 }

@@ -17,13 +17,13 @@ class ACA_PlayerCamera : public ACameraActor
 	ACA_PlayerCamera();
 
 	float CameraMaxDist = 1000.0f;
-	float CameraMinDist = 200.0f;
+	float CameraMinDist = 50.0f;
 
-	float MouseSensitivity = 750.0f;
+	float MouseSensitivity = 300.0f;
 
-	float LerpMaxDuration = 0.2f;
-	float CurrentDeltaTime = 0.0f;
-
+	float LerpMaxDuration = 0.05f;	// Remove the Lerp functionality for the most smoothness but means can be more snappy to sudden changes
+	float CurrentDeltaTime = 0.0f;	// The lerping can seem slightly jittery but gives a nice delayed effect
+									// Added Lerping to Pitch and Yaw this defintitely helped with jitter though this whole system has the flaw that it can coincide with other collisions as its lerping
 	void MoveCamera(const float& DeltaTime);
 	
 	virtual void BeginPlay() override;

@@ -9,7 +9,7 @@
 
 #include "CA_PlayerCamera.h"
 
-#include "Character.generated.h"
+#include "EnhancedInput/Public/EnhancedInputSubsystems.h"
 
 #include "Components/CapsuleComponent.h"
 
@@ -54,8 +54,39 @@ public:
 	// Called every frame
 	virtual void AsyncPhysicsTickActor(float DeltaTime, float SimTime) override;
 
+#pragma region Physics Calc And Application
+
+	FVector Acceleration = FVector::ZeroVector;
+	FVector PreviousAcceleration = FVector::ZeroVector;
+
+	FVector PreviousPosition = FVector::ZeroVector;
+	FVector Velocity = FVector::ZeroVector;
+	FVector TransformVelocity = FVector::ZeroVector;
+	FVector TotalImpulse = FVector::ZeroVector;
+
+	FVector GravityNormal = FVector::UpVector;
+	float GravityMagnitude = -9.81f;
+
+	float Mass = 70.0f;
+	float InvMass = 1.0f;
+
+	float CoefficientOfRestitution = 0.5f;
+
+	float FrictionCoefficent = 0.5f;
+
+	float DragCoefficent = 0.1f;
+
 	void ApplyVelocity(const float& DeltaTime);
-#pragma region PhysicsForceCalc
+
+	/// <summary>
+	/// Uses F = ma to get acceleration and transform into velocity
+	/// </summary>
+	/// <param name="AddedForce"> Used as base force or impulse and doesn't use const for the sake of the impulse </param>
+	/// <param name="DeltaTime"> Turns acceleration into velocity and Impulse into force </param>
+	/// <param name="TypeOfForce"> Checks whether the user wants the force to be an impulse or not</param>
+	void AddForce(const FVector& AddedForce, const ForceType& TypeOfForce);
+
+	void AddTransformVel(const FVector& AddedTransform);
 
 	void CalculatePhysicsForces();
 
@@ -69,6 +100,8 @@ public:
 
 	FVector CalculateGravityAccel(const FVector& GravityDir, const float& GravityMag);
 
+	inline void CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum);
+
 	/// <summary>
 	/// Calculates The Impulse of a collision based on relative velocity, mass, restitution coefficent and the surface normal
 	/// Only supports a collision between 2 objects at once. Adds 1 to e as to negate against all incoming velocity and then adds the extra bounce.
@@ -80,6 +113,31 @@ public:
 	void CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal, float& Impulse);
 #pragma endregion
 
+#pragma region Collision Detection And Response
+
+	FVector FloorNormal = FVector::UpVector;
+
+	float MaxAngle = 80.0f;
+
+	int MaxBounces = 10;
+
+	bool IsGrounded = false;
+
+	bool IsInContact = false;
+
+	UCapsuleComponent* Collider;
+
+	float CapsuleHalfHeight = 90.0f;
+	float CapsuleRadius = 30.0f;
+
+	float SkinWidth = 0.02f;
+
+	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity);
+
+	UFUNCTION()
+	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+#pragma endregion
 
 
 #pragma region TimeIntegrationMethods
@@ -115,23 +173,14 @@ public:
 	/// <param name="ComputedAccel"> Passes by reference the acceleration which is currently just the acceleration variable</param>
 	void CalculateRK4Acceleration(const FVector& Position, const FVector& CurrentVelocity, FVector& ComputedAccel);
 #pragma endregion
-	/// <summary>
-	/// Uses F = ma to get acceleration and transform into velocity
-	/// </summary>
-	/// <param name="AddedForce"> Used as base force or impulse and doesn't use const for the sake of the impulse </param>
-	/// <param name="DeltaTime"> Turns acceleration into velocity and Impulse into force </param>
-	/// <param name="TypeOfForce"> Checks whether the user wants the force to be an impulse or not</param>
-	void AddForce(const FVector& AddedForce, const ForceType& TypeOfForce);
 
-	void AddTransformVel(const FVector& AddedTransform);
 
-	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity);
+
 	
 	inline float Square(const float& NumberToSquare);
 	inline float Power(const float& MultNum, const int& Power);
 	float Sqrt(const float& SqrtNum);
 	float InvSqrt(const float& SqrtNum);
-	inline void CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum);
 	/// <summary>
 	/// Used to convert meters to centimeters as I prefer to use meters and its more common in physics overall
 	/// Needed when interacting with any UE5 systems such as shape sweeps and setting actor location
@@ -217,65 +266,28 @@ public:
 	inline FVector ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal);
 
 #pragma endregion
-	
-	FVector Acceleration = FVector::ZeroVector;
-	FVector PreviousAcceleration = FVector::ZeroVector;
-
-	FVector PreviousPosition = FVector::ZeroVector;
-	FVector Velocity = FVector::ZeroVector;
-	FVector TransformVelocity = FVector::ZeroVector;
-	FVector TotalImpulse = FVector::ZeroVector;
-	float ImpulseDeltaTime = 0.02f;
-
-	FVector GravityNormal = FVector::UpVector;
-	float GravityMagnitude = -9.81f;
-
-	float Mass = 70.0f;
-	float InvMass = 0.0f;
-
-	float CoefficientOfRestitution = 0.5f;
-
-	float FrictionCoefficent = 0.5f;
-
-	float DragCoefficent = 0.1f;
-
-	FVector FloorNormal = FVector::UpVector;
-
-	float MaxAngle = 80.0f;
-
-	int MaxBounces = 10;
-
-	bool IsGrounded = false;
-
-	bool IsInContact = false;
-
-	UCapsuleComponent* Collider;
-
-	float CapsuleHalfHeight = 90.0f;
-	float CapsuleRadius = 30.0f;
-
-	float SkinWidth = 0.02f;
 
 	UPROPERTY(EditAnywhere)
 	USkeletalMesh* CharMesh;
 
+#pragma region Player Input
+
 	UGI_InputManager* InputManager;
 
-	float MaxSpeed = 10.0f;
+	UPROPERTY(EditAnywhere)
+	UInputMappingContext* DefaultMappingContext;
 
-	float MoveSpeed = 5.0f;
+	float MoveSpeed = 10.0f;
+
+	float MaxSpeed = 15.0f;
 
 	float JumpMagnitude = 20.0f;
 
 	int MaxJumpCount = 1;
 	int CurrentJumpCount = 0;
 
-	UFUNCTION()
-	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-
-#pragma region Player Input
-
 	ACA_PlayerCamera* Camera = nullptr;
+
 	UPROPERTY(EditAnywhere)
 	UInputAction* MoveButton;
 	UPROPERTY(EditAnywhere)

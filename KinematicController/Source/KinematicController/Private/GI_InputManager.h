@@ -23,7 +23,8 @@ class UGI_InputManager : public UGameInstance
 	GENERATED_BODY()
 
 	TArray<InputKey*> InputKeys = TArray<InputKey*>();
-
+	
+	~UGI_InputManager();
 public:
 	void AddInputKey(const FKey& AddedKey, const int& MinFrames);
 	void RemoveInputKey(const FKey& RemovedKey);
