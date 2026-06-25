@@ -195,6 +195,21 @@ public:
 	/// <param name="Vector">The Vector to be Converted into normal m units </param>
 	/// <returns></returns>
 	FVector ConvertFromUE5Units(const FVector& Vector);
+
+	/// <summary>
+	/// Used to convert meters to centimeters as I prefer to use meters and its more common in physics overall
+	/// Needed when interacting with any UE5 systems such as shape sweeps and setting actor location
+	/// </summary>
+	/// <param name="Vector"> The Vector to be Converted into UE5 cm units</param>
+	/// <returns> The Converted Vector</returns>
+	float ConvertToUE5Units(const float& NumToConvert);
+	/// <summary>
+	/// Used to convert centimeters to meters as I prefer to use meters and its more common in physics overall
+	/// Needed after getting UE5 Values such as actor location or hit result location/impact point
+	/// </summary>
+	/// <param name="Vector">The Vector to be Converted into normal m units </param>
+	/// <returns></returns>
+	float ConvertFromUE5Units(const float& NumToConvert);
 #pragma region VectorMathematics
 
 	/// <summary>
@@ -277,7 +292,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* DefaultMappingContext;
 
-	float MoveSpeed = 10.0f;
+	float MoveSpeed = 2.0f;
 
 	float MaxSpeed = 15.0f;
 

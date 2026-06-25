@@ -13,7 +13,7 @@ AKinematicCharacterController::AKinematicCharacterController()
 	RootComponent = CreateDefaultSubobject<UCapsuleComponent>("Character Collider");
 	Collider = Cast<UCapsuleComponent>(RootComponent);
 
-	CapsuleRadius -= SkinWidth;
+	CapsuleRadius -= ConvertToUE5Units(SkinWidth) * 2;	// Converts To UE5 units as this is meant in meters and is applied as such
 
 	Collider->SetCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
 	Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
@@ -89,12 +89,15 @@ void AKinematicCharacterController::AddForce(const FVector& AddedForce, const Fo
 
 void AKinematicCharacterController::AddTransformVel(const FVector& AddedTransform)
 {
+	if (AddedTransform.ContainsNaN())
+		return;
+
 	TransformVelocity += AddedTransform;
 }
 
 FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity)
 {
-	if (CurrentBounces >= MaxBounces)
+	if (CurrentBounces >= MaxBounces || CurrentVel.IsNearlyZero())
 	{
 		return FVector::ZeroVector;
 	}
@@ -111,15 +114,18 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 	if (hit.bBlockingHit)
 	{
-		FloorNormal = hit.ImpactNormal;
+		FloorNormal = hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
 		
-		FVector SnapToSurface = Normalized(CurrentVel) * ((hit.Distance * 0.01f) - SkinWidth);
+
+		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(hit.Distance) - SkinWidth);
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
-		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Only ever returns 0
+		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
 
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Hit Angle: " + FString::FromInt((int)Angle));
-
+		/*if (!IsGravity)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Hit Imp Normal: " + FloorNormal.ToCompactString() + " Hit Normal: " + hit.Normal.ToCompactString());
+		}*/
 
 		if (Magnitude(SnapToSurface) <= SkinWidth)
 		{
@@ -136,6 +142,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		}
 		else
 		{
+			// This piece of code is causing unexpected collisions with environ ment
 			FVector HitNormalXZ = Normalized(ProjectOnPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
 			// 1 - limits dot product between 0 and 1
 			float Scale = 1 - DotProduct(HitNormalXZ, -Normalized(ProjectOnPlane(InitialVel, GravityNormal)));
@@ -192,12 +199,10 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	// Checks if gravity displacement hit something and if gravity was going down towards the ground
 	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnVector(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "TotalBounces" + FString::FromInt(TotalBounces));
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "TotalBounces" + FString::FromInt(TotalBounces));
 
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
-
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, " Current Acceleration " + Acceleration.ToCompactString());
 
 	// Used better way to solve issue instead of Manually adding radius and what not instead was able to get capsule location at collision for the displacement 
 	// Snap To Surface now uses this which now doesn't overlap with anything
@@ -218,6 +223,7 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 
 	if (IsInContact && VelMag > 0.001f)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
+		// Going to replace floor normal with gravity normal so friction always assumes a flat floor so friction doesn't scale against 
 		FVector FrictionAccel = CalculateFrictionAccel(Velocity, FloorNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-Normalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
 		AddForce(FrictionAccel, ForceType::Acceleration);
@@ -232,6 +238,7 @@ float AKinematicCharacterController::CalculateNormalForce(const FVector& Surface
 
 FVector AKinematicCharacterController::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
 {
+	// Realized issue with KCC is that more worse surface normal means that gravity is going against both gravity more as well as friction
 	return -Normalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
 }
 
@@ -323,6 +330,14 @@ FVector AKinematicCharacterController::ConvertToUE5Units(const FVector& Vector)
 FVector AKinematicCharacterController::ConvertFromUE5Units(const FVector& Vector)
 {
 	return Vector * 0.01f;	// Equivalent of 1/100 which is the equaivalent of /100 without the decreased performance
+}
+float AKinematicCharacterController::ConvertToUE5Units(const float& NumToConvert)
+{
+	return NumToConvert * 100.0f;
+}
+float AKinematicCharacterController::ConvertFromUE5Units(const float& NumToConvert)
+{
+	return NumToConvert * 0.01f;
 }
 #pragma region VectorMathematics
 
