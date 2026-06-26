@@ -97,7 +97,7 @@ void AKinematicCharacterController::AddTransformVel(const FVector& AddedTransfor
 
 FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity)
 {
-	if (CurrentBounces >= MaxBounces || CurrentVel.IsNearlyZero())
+	if (CurrentBounces >= MaxBounces || CurrentVel == FVector::ZeroVector)
 	{
 		return FVector::ZeroVector;
 	}
@@ -116,17 +116,16 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	{
 		FloorNormal = hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
 		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(hit.Distance) - SkinWidth);
+
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
 
-		if (!IsGravity)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Hit Imp Normal: " + FloorNormal.ToCompactString() + " Hit Normal: " + hit.Normal.ToCompactString());
-		}
 
-		if (Magnitude(SnapToSurface) <= SkinWidth)
+		if (Magnitude(SnapToSurface) <= SkinWidth)	// Think this may be the issue as up to 0.015 can be lost here
 		{
+			//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Lost Snapping:" + FString::SanitizeFloat(Magnitude(SnapToSurface)));
+			LeftoverVelocity = CurrentVel;	// Sets leftover velocity to current vel so snap to surface is not unilaterally lost
 			SnapToSurface = FVector::ZeroVector;
 		}
 		if (Angle <= MaxSlopeAngle)
@@ -136,6 +135,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
+
 			LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal);
 		}
 		else
@@ -208,8 +208,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	// Checks if gravity displacement hit something and if gravity was going down towards the ground
 	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnVector(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
-	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::SanitizeFloat(Magnitude(MovementDisplacement)/OriginalMoveMag * 100) + "%");
-
+	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement)/OriginalMoveMag * 100) + "%");
+	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
 
@@ -310,8 +310,6 @@ void AKinematicCharacterController::CalculateBounceImpulse(const FVector& Relati
 	Impulse *= TotalMass;
 }
 
-
-
 inline float AKinematicCharacterController::Square(const float& NumberToSquare)
 {
 	return NumberToSquare * NumberToSquare;
@@ -393,6 +391,7 @@ inline float AKinematicCharacterController::AngleBetweenVectors(const FVector& V
 
 inline FVector AKinematicCharacterController::ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal)
 {
+	// This is not the cause there is some loss of extremely small vectors but nothing much else and doesn't sync with the staggering of the KCC
 	return Normalized(ProjectOnPlane(FullVector, PlaneNormal)) * Magnitude(FullVector);
 }
 #pragma endregion
