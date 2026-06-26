@@ -129,7 +129,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		{
 			SnapToSurface = FVector::ZeroVector;
 		}
-		if (Angle <= MaxAngle)
+		if (Angle <= MaxSlopeAngle)
 		{
 			if (IsGravity)	// If the check is for gravity this makes sure there is no sliding due to gravity
 			{
@@ -140,13 +140,15 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		}
 		else
 		{
-			// This piece of code is causing unexpected collisions with environment
 			FVector HitNormalXZ = Normalized(ProjectOnPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
 			// 1 - limits dot product between 0 and 1
 			float Scale = 1 - DotProduct(HitNormalXZ, -Normalized(ProjectOnPlane(InitialVel, GravityNormal)));
-			if (IsGrounded && !IsGravity)
-			{				// Treats as flat wall if grounded and this is not the gravity check
-				LeftoverVelocity = Normalized(ProjectAndScale(ProjectOnPlane(LeftoverVelocity, GravityNormal), HitNormalXZ)) * Scale;
+			
+			if (IsGrounded && !IsGravity)	
+			{				// Treats as flat wall if grounded and this is not the gravity check 
+				LeftoverVelocity = ProjectAndScale(ProjectOnPlane(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
+				// Fixed by not normalizing the whole vector as scale is a decimal 0 - 1 scale
+				// Has Issue of not removing velocity
 			}
 			else
 			{

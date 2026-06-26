@@ -117,7 +117,7 @@ public:
 
 	FVector FloorNormal = FVector::UpVector;
 
-	float MaxAngle = 80.0f;
+	float MaxSlopeAngle = 80.0f;
 
 	int MaxBounces = 10;
 
