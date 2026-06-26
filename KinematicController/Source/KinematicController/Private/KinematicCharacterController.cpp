@@ -115,8 +115,6 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	if (hit.bBlockingHit)
 	{
 		FloorNormal = hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
-		
-
 		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(hit.Distance) - SkinWidth);
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
@@ -142,7 +140,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		}
 		else
 		{
-			// This piece of code is causing unexpected collisions with environ ment
+			// This piece of code is causing unexpected collisions with environment
 			FVector HitNormalXZ = Normalized(ProjectOnPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
 			// 1 - limits dot product between 0 and 1
 			float Scale = 1 - DotProduct(HitNormalXZ, -Normalized(ProjectOnPlane(InitialVel, GravityNormal)));
@@ -223,7 +221,7 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 
 	if (IsInContact && VelMag > 0.001f)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
-		// Going to replace floor normal with gravity normal so friction always assumes a flat floor so friction doesn't scale against 
+		// Friction was not causing the problems from what I can see
 		FVector FrictionAccel = CalculateFrictionAccel(Velocity, FloorNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-Normalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
 		AddForce(FrictionAccel, ForceType::Acceleration);
