@@ -177,16 +177,24 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 
 	int TotalBounces = 0;
 	FVector TotalDisplacement = NewPosition - PreviousPosition;	// Decided to use new position instead of velocity so its not unneeded calculation also easier to add in transform movement options 
-	TotalDisplacement += TransformVelocity * DeltaTime;	// Integrated transform velocity into total displacement
 	// May be better to use actual displacement for other time integration methods but velocity verlet should be fairly accurate
 	FVector GravityDisplacement = ProjectOnVector(TotalDisplacement, GravityNormal);
 
 	FVector MovementDisplacement = TotalDisplacement - GravityDisplacement;
+
+	NewPosition = ConvertToUE5Units(PreviousPosition);
+
+	if (!TransformVelocity.IsNearlyZero())	// Removed Transform Velocity From
+	{
+		FVector TransformDisplacement = TransformVelocity * DeltaTime;
+		TransformDisplacement = CollideAndSlideCollision(TotalBounces, TransformDisplacement, TransformDisplacement, PreviousPosition, false);
+		NewPosition += ConvertToUE5Units(TransformDisplacement);
+	}
 	// Made so it adds to position as its velocity/displacement based rather than
 
-	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, PreviousPosition, false);
+	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, ConvertFromUE5Units(NewPosition), false);
 
-	NewPosition = ConvertToUE5Units(PreviousPosition + MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
+	NewPosition += ConvertToUE5Units(MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
 	int BouncesOnGround = TotalBounces;
 
 	GravityDisplacement = CollideAndSlideCollision(BouncesOnGround, GravityDisplacement, GravityDisplacement, ConvertFromUE5Units(NewPosition), true);
