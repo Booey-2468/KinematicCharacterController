@@ -120,10 +120,10 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
 
-		/*if (!IsGravity)
+		if (!IsGravity)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Hit Imp Normal: " + FloorNormal.ToCompactString() + " Hit Normal: " + hit.Normal.ToCompactString());
-		}*/
+		}
 
 		if (Magnitude(SnapToSurface) <= SkinWidth)
 		{
@@ -182,6 +182,7 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 
 	FVector MovementDisplacement = TotalDisplacement - GravityDisplacement;
 
+	float OriginalMoveMag = Magnitude(MovementDisplacement);
 	NewPosition = ConvertToUE5Units(PreviousPosition);
 
 	if (!TransformVelocity.IsNearlyZero())	// Removed Transform Velocity From
@@ -207,7 +208,7 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	// Checks if gravity displacement hit something and if gravity was going down towards the ground
 	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnVector(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
-	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "TotalBounces" + FString::FromInt(TotalBounces));
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::SanitizeFloat(Magnitude(MovementDisplacement)/OriginalMoveMag * 100) + "%");
 
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
@@ -567,8 +568,10 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 	if (MovementForce.IsNearlyZero())	// Finally realised issue movement force is initially set to 0 and when normalizing you do 0/0 hence an infinite nan(ind) number
 		return;
 
-	MovementForce = Normalized(MovementForce) * MoveSpeed;	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
+	//float SlopeScalingMod = (1 + (1 - DotProduct(FloorNormal, GravityNormal)) * SlopeMod);	// Added so slope can gain modifier when going up slopes
 
+	MovementForce = Normalized(MovementForce) * MoveSpeed;	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
+	// Should go roughly
 	AddForce(MovementForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why
 }
 #pragma endregion

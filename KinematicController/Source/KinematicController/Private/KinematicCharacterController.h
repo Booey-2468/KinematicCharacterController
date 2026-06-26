@@ -296,6 +296,8 @@ public:
 
 	float MaxSpeed = 15.0f;
 
+	float SlopeMod = 3.0f;
+
 	float JumpMagnitude = 20.0f;
 
 	int MaxJumpCount = 1;
