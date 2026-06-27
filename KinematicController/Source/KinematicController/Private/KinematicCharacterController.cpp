@@ -36,36 +36,23 @@ void AKinematicCharacterController::BeginPlay()
 	{
 		Collider->OnComponentHit.AddDynamic(this, &AKinematicCharacterController::OnCharacterHit);
 	}
-	AddPlayerInputKeys();
-	
-	Camera = GetWorld()->SpawnActor<ACA_PlayerCamera>(ACA_PlayerCamera::StaticClass(), GetActorTransform());
-
-	Camera->FocusedActor = this;
-	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
-	{
-		PlayerController->PlayerCameraManager->SetViewTarget(Camera);
-		Camera->GetCameraComponent();
-
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-		{
-			Subsystem->AddMappingContext(DefaultMappingContext, 0);
-		}
-	}
-
 	InvMass = 1 / Mass;	// Need to do again if mass is ever changed
 }
 
 void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
 {
-	if (Camera)
+	if (Camera && PlayerController)
 		AddMovementInput(Camera);
 
 	CalculatePhysicsForces();
 	ApplyVelocity(DeltaTime);
-	InputManager->TempResetKey(EKeys::W);
-	InputManager->TempResetKey(EKeys::A);
-	InputManager->TempResetKey(EKeys::S);
-	InputManager->TempResetKey(EKeys::D);
+	if (PlayerController)
+	{
+		InputManager->TempResetKey(EKeys::W);
+		InputManager->TempResetKey(EKeys::A);
+		InputManager->TempResetKey(EKeys::S);
+		InputManager->TempResetKey(EKeys::D);
+	}
 
 }
 
@@ -232,8 +219,8 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 
 	if (IsInContact && VelMag > 0.001f)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
-		// Friction was not causing the problems from what I can see
-		FVector FrictionAccel = CalculateFrictionAccel(Velocity, FloorNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
+		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
+		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-Normalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
 		AddForce(FrictionAccel, ForceType::Acceleration);
 	}
@@ -462,6 +449,28 @@ void AKinematicCharacterController::CalculateRK4Acceleration(const FVector& Posi
 #pragma endregion
 
 #pragma region Player Input
+
+void AKinematicCharacterController::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	if ((PlayerController = Cast<APlayerController>(NewController)))
+	{
+		PlayerController->bAutoManageActiveCameraTarget = false;
+		AddPlayerInputKeys();
+
+		Camera = GetWorld()->SpawnActor<ACA_PlayerCamera>(ACA_PlayerCamera::StaticClass(), GetActorTransform());
+
+		Camera->FocusedActor = this;
+
+		PlayerController->SetViewTarget(Camera);
+
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+		{
+			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+		}
+	}
+}
 // Called to bind functionality to input
 void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {

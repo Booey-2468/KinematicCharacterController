@@ -305,12 +305,16 @@ public:
 
 	ACA_PlayerCamera* Camera = nullptr;
 
+	APlayerController* PlayerController;
+
 	UPROPERTY(EditAnywhere)
 	UInputAction* MoveButton;
 	UPROPERTY(EditAnywhere)
 	UInputAction* TurnCamAction;
 	UPROPERTY(EditAnywhere)
 	UInputAction* JumpButton;
+
+	virtual void PossessedBy(AController* NewController) override;
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
