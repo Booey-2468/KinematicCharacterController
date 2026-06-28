@@ -9,6 +9,8 @@
 
 #include "CA_PlayerCamera.h"
 
+#include "Components/TimelineComponent.h"
+
 #include "EnhancedInput/Public/EnhancedInputSubsystems.h"
 
 #include "Components/CapsuleComponent.h"
@@ -296,7 +298,15 @@ public:
 
 	float MaxSpeed = 15.0f;
 
-	float SlopeMod = 3.0f;
+	float AirSpeed = 0.1f;
+
+	float CorneringStiffness = 1.0f;
+
+	UPROPERTY(EditAnywhere)
+	UCurveFloat* CorneringCurve;
+
+	UPROPERTY(EditAnywhere)
+	UCurveFloat* SpeedCurve;
 
 	float JumpMagnitude = 20.0f;
 
@@ -329,6 +339,8 @@ public:
 	void AddPlayerInputKeys();
 
 	void AddMovementInput(AActor* MovementAxis);
+
+	float CalculateSpeedMod(const FVector& CurrentVelocity, const FVector& MovementDir);
 #pragma endregion
 
 

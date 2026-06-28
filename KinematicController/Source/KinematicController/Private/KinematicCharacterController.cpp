@@ -551,7 +551,7 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 	FVector TransformForwardXZ = Normalized(ProjectOnPlane(MovementAxis->GetActorForwardVector(), GravityNormal));
 	FVector TransformRightXZ = Normalized(ProjectOnPlane(MovementAxis->GetActorRightVector(), GravityNormal));
 
-
+	
 	InputKey* Key;
 
 	if ((Key = InputManager->GetInputKey(EKeys::W)) && Key->HasBeenPressed)	// Tidied up so that GetInput Key isn't called twice
@@ -576,10 +576,26 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 	if (MovementForce.IsNearlyZero())	// Finally realised issue movement force is initially set to 0 and when normalizing you do 0/0 hence an infinite nan(ind) number
 		return;
 
+	MovementForce = Normalized(MovementForce);
+
+	FVector DriftForce = -ProjectOnPlane(VelocityXZ, MovementForce) * CorneringStiffness;
 	//float SlopeScalingMod = (1 + (1 - DotProduct(FloorNormal, GravityNormal)) * SlopeMod);	// Added so slope can gain modifier when going up slopes
 
-	MovementForce = Normalized(MovementForce) * MoveSpeed;	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
+	MovementForce = MovementForce * MoveSpeed * CalculateSpeedMod(VelocityXZ, MovementForce);	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
 	// Should go roughly
-	AddForce(MovementForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why
+	AddForce(MovementForce + DriftForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why
+}
+float AKinematicCharacterController::CalculateSpeedMod(const FVector& CurrentVelocity, const FVector& MovementDir)
+{
+	if (!SpeedCurve || !CorneringCurve)
+		return 1.0f;
+
+	float VelMag = Magnitude(CurrentVelocity);
+
+	if (!IsGrounded)
+	{
+		return AirSpeed * CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity / VelMag, MovementDir) + 1);
+	}
+	return SpeedCurve->FloatCurve.Eval(VelMag / MaxSpeed) + CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity/VelMag, MovementDir) + 1);
 }
 #pragma endregion
