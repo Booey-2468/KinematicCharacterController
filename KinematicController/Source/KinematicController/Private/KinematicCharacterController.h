@@ -67,6 +67,7 @@ public:
 	FVector TotalImpulse = FVector::ZeroVector;
 
 	FVector GravityNormal = FVector::UpVector;
+
 	float GravityMagnitude = -9.81f;
 
 	float Mass = 70.0f;
@@ -294,9 +295,9 @@ public:
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* DefaultMappingContext;
 
-	float MoveSpeed = 10.0f;
+	float MoveSpeed = 3.0f;
 
-	float MaxSpeed = 15.0f;
+	float MaxSpeed = 6.0f;
 
 	float AirSpeed = 0.1f;
 

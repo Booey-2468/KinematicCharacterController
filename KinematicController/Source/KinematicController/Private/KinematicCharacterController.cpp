@@ -195,7 +195,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	// Checks if gravity displacement hit something and if gravity was going down towards the ground
 	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnVector(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement)/OriginalMoveMag * 100) + "%");
+	if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement)/OriginalMoveMag * 100) + "%");
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
