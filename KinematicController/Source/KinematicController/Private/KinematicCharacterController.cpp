@@ -109,14 +109,15 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
 
-		if (Magnitude(SnapToSurface) <= SkinWidth)	// Think this may be the issue as up to 0.015 can be lost here
+		/*if (Magnitude(SnapToSurface) <= SkinWidth)	// Could maybe find way to make sure snap to surface is exactly 0.02
 		{
 			//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Lost Snapping:" + FString::SanitizeFloat(Magnitude(SnapToSurface)));
 			LeftoverVelocity = CurrentVel;	// Sets leftover velocity to current vel so snap to surface is not unilaterally lost
 			SnapToSurface = FVector::ZeroVector;
-		}
+		}*/
 		if (LeftoverVelocity == FVector::ZeroVector)
 		{
+			++CurrentBounces;
 			return SnapToSurface;
 		}
 		if (Angle <= MaxSlopeAngle)
