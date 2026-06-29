@@ -77,7 +77,7 @@ public:
 
 	float FrictionCoefficent = 0.5f;
 
-	float DragCoefficent = 0.1f;
+	float DragCoefficent = 1.0f;
 
 	void ApplyVelocity(const float& DeltaTime);
 
@@ -295,13 +295,13 @@ public:
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* DefaultMappingContext;
 
-	float MoveSpeed = 3.0f;
+	float MoveSpeed = 4.0f;
 
 	float MaxSpeed = 6.0f;
 
 	float AirSpeed = 0.1f;
 
-	float CorneringStiffness = 1.0f;
+	float CorneringStiffness = 2.0f;
 
 	UPROPERTY(EditAnywhere)
 	UCurveFloat* CorneringCurve;

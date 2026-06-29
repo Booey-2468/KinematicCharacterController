@@ -88,6 +88,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	{
 		return FVector::ZeroVector;
 	}
+
 	float dist = Magnitude(CurrentVel) + SkinWidth;
 
 	FHitResult hit;
@@ -108,12 +109,15 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
 
-
 		if (Magnitude(SnapToSurface) <= SkinWidth)	// Think this may be the issue as up to 0.015 can be lost here
 		{
 			//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Lost Snapping:" + FString::SanitizeFloat(Magnitude(SnapToSurface)));
 			LeftoverVelocity = CurrentVel;	// Sets leftover velocity to current vel so snap to surface is not unilaterally lost
 			SnapToSurface = FVector::ZeroVector;
+		}
+		if (LeftoverVelocity == FVector::ZeroVector)
+		{
+			return SnapToSurface;
 		}
 		if (Angle <= MaxSlopeAngle)
 		{
@@ -167,6 +171,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	// May be better to use actual displacement for other time integration methods but velocity verlet should be fairly accurate
 	FVector GravityDisplacement = ProjectOnVector(TotalDisplacement, GravityNormal);
 
+	float GravMag = Magnitude(GravityDisplacement);
+
 	FVector MovementDisplacement = TotalDisplacement - GravityDisplacement;
 
 	float OriginalMoveMag = Magnitude(MovementDisplacement);
@@ -195,8 +201,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	// Checks if gravity displacement hit something and if gravity was going down towards the ground
 	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnVector(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
-	if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement)/OriginalMoveMag * 100) + "%");
+	//if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
+		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%");
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
@@ -221,7 +227,7 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 	if (IsInContact && VelMag > 0.001f)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
 		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
-		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
+		FVector FrictionAccel = CalculateFrictionAccel(Velocity, FloorNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-Normalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
 		AddForce(FrictionAccel, ForceType::Acceleration);
 	}
