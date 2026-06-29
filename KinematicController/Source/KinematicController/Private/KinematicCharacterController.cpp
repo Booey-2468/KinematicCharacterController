@@ -124,6 +124,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		{
 			if (IsGravity)	// If the check is for gravity this makes sure there is no sliding due to gravity
 			{
+
 				++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
