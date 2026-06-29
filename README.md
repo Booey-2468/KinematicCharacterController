@@ -17,15 +17,13 @@ All my Systems use m, m/s etc. so I convert any incoming information from UE5 su
 
 Player Movement is based on Camera rotation projected onto a plane based on gravity.
 
-General Improvements To Make:
+I also have Curves for quick speeding up and turning as well as a cornering force for better turning
 
-Need to Add Drifting Force Timeline so that direction change is more dynamic
+General Improvements To Make:
 
 Need to add jumping, jump buffer and coyote time
 
 Need to Add Rotation Code for Collider for visual effects
-
-Might want a Timeline for speeding up and going slower the closer to max speed you are
 
 Would like to seperate the parts that deal with physics and the character controller part into a pawn class that inherents from the physics pawn class
 
@@ -45,7 +43,7 @@ Could add sliding from gravity but I think this is worse as it means that you ca
 
 Issues:
 
-KCC is bouncing off the ground when hitting a slope also seems to speed up when on slopes
+KCC bouncing has been severly reduced but might still be there a bit
 
 Very Rarely the collider can get stuck inside another collider/surface
 
