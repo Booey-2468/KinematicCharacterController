@@ -309,10 +309,26 @@ public:
 	UPROPERTY(EditAnywhere)
 	UCurveFloat* SpeedCurve;
 
-	float JumpMagnitude = 20.0f;
+	float JumpMagnitude = 7.0f;
+
+	float VariableHeightImp = 2.4f;
+
+	bool HasFallen = false;
 
 	int MaxJumpCount = 1;
 	int CurrentJumpCount = 0;
+
+	float JumpBufferTime = 0.2f;
+
+	float JumpBufferTimer = 0.0f;
+
+	float CoyoteTime = 0.2f;
+
+	float CoyoteTimer = 0.0f;
+
+	float JumpTimer = 0.0f;
+
+	float MinJumpTime = 0.2f;
 
 	ACA_PlayerCamera* Camera = nullptr;
 
@@ -333,8 +349,6 @@ public:
 	void Move(const FInputActionValue& InputVal);
 	void TurnCam(const FInputActionValue& InputVal);
 	void JumpInput(const FInputActionValue& InputVal);
-	void StartJump(const FInputActionValue& InputVal);
-	void EndJump(const FInputActionValue& InputVal);
 
 
 	void AddPlayerInputKeys();
@@ -342,6 +356,10 @@ public:
 	void AddMovementInput(AActor* MovementAxis);
 
 	float CalculateSpeedMod(const FVector& CurrentVelocity, const FVector& MovementDir);
+
+	void JumpLogic();
+
+	void JumpTimerLogic(const float& DeltaTime);
 #pragma endregion
 
 

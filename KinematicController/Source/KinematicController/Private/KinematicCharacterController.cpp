@@ -42,7 +42,11 @@ void AKinematicCharacterController::BeginPlay()
 void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
 {
 	if (Camera && PlayerController)
+	{
 		AddMovementInput(Camera);
+		JumpTimerLogic(DeltaTime);
+		JumpLogic();
+	}
 
 	CalculatePhysicsForces();
 	ApplyVelocity(DeltaTime);
@@ -84,7 +88,7 @@ void AKinematicCharacterController::AddTransformVel(const FVector& AddedTransfor
 
 FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity)
 {
-	if (CurrentBounces >= MaxBounces || CurrentVel == FVector::ZeroVector)
+	if (CurrentBounces >= MaxBounces || CurrentVel.IsNearlyZero())
 	{
 		return FVector::ZeroVector;
 	}
@@ -105,6 +109,11 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		FloorNormal = hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
 		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(hit.Distance) - SkinWidth);
 
+		if (SnapToSurface.ContainsNaN())
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is it Snap " + SnapToSurface.ContainsNaN());
+		}
+
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
@@ -115,6 +124,8 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			LeftoverVelocity = CurrentVel;	// Sets leftover velocity to current vel so snap to surface is not unilaterally lost
 			SnapToSurface = FVector::ZeroVector;
 		}*/
+
+
 		if (LeftoverVelocity == FVector::ZeroVector)
 		{
 			++CurrentBounces;
@@ -124,7 +135,6 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		{
 			if (IsGravity)	// If the check is for gravity this makes sure there is no sliding due to gravity
 			{
-
 				++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
@@ -136,8 +146,8 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			FVector HitNormalXZ = Normalized(ProjectOnPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
 			// 1 - limits dot product between 0 and 1
 			float Scale = 1 - DotProduct(HitNormalXZ, -Normalized(ProjectOnPlane(InitialVel, GravityNormal)));
-			
-			if (IsGrounded && !IsGravity)	
+
+			if (IsGrounded && !IsGravity)
 			{				// Treats as flat wall if grounded and this is not the gravity check 
 				LeftoverVelocity = ProjectAndScale(ProjectOnPlane(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
 				// Fixed by not normalizing the whole vector as scale is a decimal 0 - 1 scale
@@ -150,19 +160,30 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			// Could also add momentum and bounciness to this by adding velocity from the impulse
 			// Optonally could add impulses to other objects if physics is enabled on them
 		}
+
+		if (SnapToSurface.ContainsNaN() || LeftoverVelocity.ContainsNaN())
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is it Snap " + SnapToSurface.ContainsNaN() + LeftoverVelocity.ContainsNaN());
+		}
 		++CurrentBounces;	// Increments CurrentBounces
 		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, IsGravity);
 	}
+	if (CurrentVel.ContainsNaN())
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is it Bad " + CurrentVel.ContainsNaN());
+
+	}
 	return CurrentVel;
 }
-
 
 void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 {
 	float InvDeltaTime = 1 / DeltaTime;
 	FVector NewPosition = ConvertFromUE5Units(GetActorLocation());
+
 	
 	Velocity += TotalImpulse * InvMass; // Changed Impulses to be applied directly to velocity as they are instant changes and p = MV and J = delta P/Momentum so I can just * InvMass 
+	
 	// Because of this I don't have to worry about how much of a timestep should it be divided by to be considered instantaneous
 	CalculateVelocityVerletPosition(NewPosition, Velocity, DeltaTime);	
 
@@ -187,8 +208,13 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 		NewPosition += ConvertToUE5Units(TransformDisplacement);
 	}
 	// Made so it adds to position as its velocity/displacement based rather than
+	if(MovementDisplacement.ContainsNaN())
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Movement Displacement Before Coll:" + TotalImpulse.ToCompactString());
 
 	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, ConvertFromUE5Units(NewPosition), false);
+
+	if (MovementDisplacement.ContainsNaN())
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Movement Displacement Before Coll:" + TotalImpulse.ToCompactString());
 
 	NewPosition += ConvertToUE5Units(MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
 	int BouncesOnGround = TotalBounces;
@@ -209,6 +235,10 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
 
+	if (Velocity.ContainsNaN())
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Impulse:" + TotalImpulse.ToCompactString());
+	}
 	// Used better way to solve issue instead of Manually adding radius and what not instead was able to get capsule location at collision for the displacement 
 	// Snap To Surface now uses this which now doesn't overlap with anything
 
@@ -387,8 +417,11 @@ inline float AKinematicCharacterController::AngleBetweenVectors(const FVector& V
 
 inline FVector AKinematicCharacterController::ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal)
 {
+	FVector Plane = ProjectOnPlane(FullVector, PlaneNormal);
+	if (Plane == FVector::ZeroVector)
+		return FVector::ZeroVector;
 	// This is not the cause there is some loss of extremely small vectors but nothing much else and doesn't sync with the staggering of the KCC
-	return Normalized(ProjectOnPlane(FullVector, PlaneNormal)) * Magnitude(FullVector);
+	return Normalized(Plane) * Magnitude(FullVector);
 }
 #pragma endregion
 #pragma region TimeIntegrationMethods
@@ -490,9 +523,7 @@ void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* P
 	{
 		UserInput->BindAction(MoveButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::Move);
 		UserInput->BindAction(TurnCamAction, ETriggerEvent::Triggered, this, &AKinematicCharacterController::TurnCam);
-		UserInput->BindAction(JumpButton, ETriggerEvent::Started, this, &AKinematicCharacterController::StartJump);
 		UserInput->BindAction(JumpButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::JumpInput);
-		UserInput->BindAction(JumpButton, ETriggerEvent::Completed, this, &AKinematicCharacterController::EndJump);
 	}
 }
 
@@ -530,17 +561,9 @@ void AKinematicCharacterController::JumpInput(const FInputActionValue& InputVal)
 	}
 }
 
-void AKinematicCharacterController::StartJump(const FInputActionValue& InputVal)
-{
-}
-
-void AKinematicCharacterController::EndJump(const FInputActionValue& InputVal)
-{
-}
-
 void AKinematicCharacterController::AddPlayerInputKeys()
 {
-	int MinimumInputFrames = 5;
+	int MinimumInputFrames = 1;
 	InputManager = Cast<UGI_InputManager>(GetGameInstance());
 	InputManager->AddInputKey(EKeys::W, MinimumInputFrames);
 	InputManager->AddInputKey(EKeys::S, MinimumInputFrames);
@@ -606,5 +629,70 @@ float AKinematicCharacterController::CalculateSpeedMod(const FVector& CurrentVel
 		return AirSpeed * CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity / VelMag, MovementDir) + 1);
 	}
 	return SpeedCurve->FloatCurve.Eval(VelMag / MaxSpeed) + CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity/VelMag, MovementDir) + 1);
+}
+
+void AKinematicCharacterController::JumpLogic()
+{
+	InputKey* Key = InputManager->GetInputKey(EKeys::SpaceBar);
+
+	if (!Key)
+		return;
+
+	if (IsGrounded)
+	{
+		CurrentJumpCount = 0;
+		JumpTimer = 0.0f;
+		HasFallen = false;
+	}
+
+	bool CanJump = Key->HasBeenPressed || (JumpBufferTimer > 0.0f && IsGrounded) || (!IsGrounded && CoyoteTimer > 0.0f && Key->HasBeenPressed);
+
+	CanJump = CanJump && CurrentJumpCount < MaxJumpCount;
+
+	float UpwardVel = DotProduct(Velocity, GravityNormal);
+
+	bool ShouldFall = JumpTimer > MinJumpTime && !Key->HasBeenPressed && !IsGrounded && !HasFallen && UpwardVel >= 0.0f;
+
+	if (CanJump)
+	{
+		AddForce(JumpMagnitude * GravityNormal * Mass, ForceType::Impulse);
+		++CurrentJumpCount;
+		JumpTimer = 0.0f;
+		Velocity -= ProjectOnVector(Velocity, GravityNormal);
+	}
+	else if (ShouldFall)
+	{
+    	AddForce(VariableHeightImp * -GravityNormal * Mass, ForceType::Impulse);
+		HasFallen = true;
+	}
+
+	InputManager->TempResetKey(EKeys::SpaceBar);
+	InputManager->OnKeyRelease(EKeys::SpaceBar);
+	
+}
+void AKinematicCharacterController::JumpTimerLogic(const float& DeltaTime)
+{
+	if (IsGrounded)
+	{
+		CoyoteTimer = CoyoteTime;
+	}
+	else if (CoyoteTimer > 0.0f && !IsGrounded)
+	{
+		CoyoteTimer -= DeltaTime;
+	}
+	
+	if(InputManager->GetInputKey(EKeys::SpaceBar)->HasBeenPressed && !IsGrounded)
+	{
+		JumpBufferTimer = JumpBufferTime;
+	}
+	else if (JumpBufferTimer > 0.0f)
+	{
+		JumpBufferTimer -= DeltaTime;
+	}
+
+	if (CurrentJumpCount > 0 && !IsGrounded)
+	{
+		JumpTimer += DeltaTime;
+	}
 }
 #pragma endregion
