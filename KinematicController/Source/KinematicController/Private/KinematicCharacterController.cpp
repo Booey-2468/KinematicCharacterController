@@ -86,7 +86,7 @@ void AKinematicCharacterController::AddTransformVel(const FVector& AddedTransfor
 	TransformVelocity += AddedTransform;
 }
 
-FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity)
+FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, FHitResult& SteppingHit,const bool& IsGravity)
 {
 	if (CurrentBounces >= MaxBounces || CurrentVel.IsNearlyZero())
 	{
@@ -95,24 +95,19 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 	float dist = Magnitude(CurrentVel) + SkinWidth;
 
-	FHitResult hit;
+	FHitResult Hit;
 
 	GetWorld()->DebugDrawTraceTag = "DebugLine";
 	FCollisionQueryParams params;
 	params.TraceTag = GetWorld()->DebugDrawTraceTag;
 	params.AddIgnoredActor(this);
 
-	GetWorld()->SweepSingleByChannel(hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), params);
+	GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), params);
 
-	if (hit.bBlockingHit)
+	if (Hit.bBlockingHit)
 	{
-		FloorNormal = hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
-		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(hit.Distance) - SkinWidth);
-
-		if (SnapToSurface.ContainsNaN())
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is it Snap " + SnapToSurface.ContainsNaN());
-		}
+		FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
+		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
 
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
@@ -143,35 +138,48 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		}
 		else
 		{
-			FVector HitNormalXZ = Normalized(ProjectOnPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
-			// 1 - limits dot product between 0 and 1
-			float Scale = 1 - DotProduct(HitNormalXZ, -Normalized(ProjectOnPlane(InitialVel, GravityNormal)));
+			bool CanStep = false;
 
-			if (IsGrounded && !IsGravity)
-			{				// Treats as flat wall if grounded and this is not the gravity check 
-				LeftoverVelocity = ProjectAndScale(ProjectOnPlane(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
-				// Fixed by not normalizing the whole vector as scale is a decimal 0 - 1 scale
-				// Has Issue of not removing velocity
+			if (!IsGravity)
+				CanStep = SteppingCheck(SteppingHit, Hit);
+
+			if (!CanStep)
+			{
+				FVector HitNormalXZ = Normalized(ProjectOnPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
+				// 1 - limits dot product between 0 and 1
+
+				FVector InitialVelXZ = ProjectOnPlane(InitialVel, GravityNormal);
+				float Scale = 0.0f;
+
+				if (!InitialVelXZ.IsNearlyZero())	// Avoids normalizing InitialVelXZ when its 0 so there is no /0
+				{
+					Scale = 1 - DotProduct(HitNormalXZ, -Normalized(InitialVelXZ));
+				}
+
+				if (IsGrounded && !IsGravity)
+				{				// Treats as flat wall if grounded and this is not the gravity check 
+					LeftoverVelocity = ProjectAndScale(ProjectOnPlane(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
+					// Fixed by not normalizing the whole vector as scale is a decimal 0 - 1 scale
+					// Has Issue of not removing velocity
+				}
+				else
+				{
+					LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal) * Scale;
+				}
 			}
 			else
 			{
-				LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal) * Scale;
+				return SnapToSurface;
 			}
 			// Could also add momentum and bounciness to this by adding velocity from the impulse
 			// Optonally could add impulses to other objects if physics is enabled on them
 		}
-
-		if (SnapToSurface.ContainsNaN() || LeftoverVelocity.ContainsNaN())
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is it Snap " + SnapToSurface.ContainsNaN() + LeftoverVelocity.ContainsNaN());
-		}
 		++CurrentBounces;	// Increments CurrentBounces
-		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, IsGravity);
+		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, SteppingHit, IsGravity);
 	}
 	if (CurrentVel.ContainsNaN())
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is it Bad " + CurrentVel.ContainsNaN());
-
 	}
 	return CurrentVel;
 }
@@ -201,25 +209,30 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	float OriginalMoveMag = Magnitude(MovementDisplacement);
 	NewPosition = ConvertToUE5Units(PreviousPosition);
 
+	FHitResult StepHit;
+
 	if (!TransformVelocity.IsNearlyZero())	// Removed Transform Velocity From
 	{
 		FVector TransformDisplacement = TransformVelocity * DeltaTime;
-		TransformDisplacement = CollideAndSlideCollision(TotalBounces, TransformDisplacement, TransformDisplacement, PreviousPosition, false);
+		TransformDisplacement = CollideAndSlideCollision(TotalBounces, TransformDisplacement, TransformDisplacement, PreviousPosition, StepHit, false);
 		NewPosition += ConvertToUE5Units(TransformDisplacement);
 	}
 	// Made so it adds to position as its velocity/displacement based rather than
-	if(MovementDisplacement.ContainsNaN())
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Movement Displacement Before Coll:" + TotalImpulse.ToCompactString());
 
-	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, ConvertFromUE5Units(NewPosition), false);
+	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, ConvertFromUE5Units(NewPosition), StepHit, false);
 
-	if (MovementDisplacement.ContainsNaN())
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Movement Displacement Before Coll:" + TotalImpulse.ToCompactString());
+	// After this I'll do stepping Logic separately via sphere casting
+	// But I need to figure out how to find obstacles properly
+	// Decided to do stepping here as otherwise you won't be able to tell what has been hit and where
 
+	if (StepHit.bBlockingHit)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "HasHit Stairs: " + FString::FromInt(StepHit.bBlockingHit && !StepHit.bStartPenetrating));
+	}
 	NewPosition += ConvertToUE5Units(MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
 	int BouncesOnGround = TotalBounces;
 
-	GravityDisplacement = CollideAndSlideCollision(BouncesOnGround, GravityDisplacement, GravityDisplacement, ConvertFromUE5Units(NewPosition), true);
+	GravityDisplacement = CollideAndSlideCollision(BouncesOnGround, GravityDisplacement, GravityDisplacement, ConvertFromUE5Units(NewPosition), StepHit, true);
 
 	NewPosition += ConvertToUE5Units(GravityDisplacement);
 
@@ -418,7 +431,7 @@ inline float AKinematicCharacterController::AngleBetweenVectors(const FVector& V
 inline FVector AKinematicCharacterController::ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal)
 {
 	FVector Plane = ProjectOnPlane(FullVector, PlaneNormal);
-	if (Plane == FVector::ZeroVector)
+	if (Plane.IsNearlyZero() || Plane.ContainsNaN())
 		return FVector::ZeroVector;
 	// This is not the cause there is some loss of extremely small vectors but nothing much else and doesn't sync with the staggering of the KCC
 	return Normalized(Plane) * Magnitude(FullVector);
@@ -694,5 +707,29 @@ void AKinematicCharacterController::JumpTimerLogic(const float& DeltaTime)
 	{
 		JumpTimer += DeltaTime;
 	}
+}
+bool AKinematicCharacterController::SteppingCheck(FHitResult& SteppingHit, const FHitResult& Hit)
+{
+	GetWorld()->DebugDrawTraceTag = "DebugLine";
+	FCollisionQueryParams params;
+	params.TraceTag = GetWorld()->DebugDrawTraceTag;
+	params.AddIgnoredActor(this);
+
+	FCollisionShape Sphere = FCollisionShape::MakeSphere(CapsuleRadius);
+
+	FHitResult StepHit;
+
+	FVector LowerSphere = Hit.Location - GravityNormal * (CapsuleHalfHeight - CapsuleRadius);
+
+	FVector MaxHeight = LowerSphere + GravityNormal * ConvertToUE5Units(MaxStepHeight);
+
+	GetWorld()->SweepSingleByChannel(StepHit, MaxHeight, LowerSphere, GetActorQuat(), ECC_WorldStatic, Sphere, params);
+
+	if (StepHit.bBlockingHit && !StepHit.bStartPenetrating)
+	{
+		SteppingHit = StepHit;
+		return true;
+	}
+	return false;
 }
 #pragma endregion

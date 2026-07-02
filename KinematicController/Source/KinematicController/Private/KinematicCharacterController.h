@@ -135,7 +135,7 @@ public:
 
 	float SkinWidth = 0.02f;
 
-	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, const bool& IsGravity);
+	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, FHitResult& SteppingHit, const bool& IsGravity);
 
 	UFUNCTION()
 	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -311,7 +311,7 @@ public:
 
 	float JumpMagnitude = 7.0f;
 
-	float VariableHeightImp = 2.4f;
+	float VariableHeightImp = 2.0f;
 
 	bool HasFallen = false;
 
@@ -328,7 +328,7 @@ public:
 
 	float JumpTimer = 0.0f;
 
-	float MinJumpTime = 0.2f;
+	float MinJumpTime = 0.2f;	// This essentially decides how high the minimum jump is can't use actual height as its not a good measure and can be effected by other things
 
 	ACA_PlayerCamera* Camera = nullptr;
 
@@ -360,6 +360,10 @@ public:
 	void JumpLogic();
 
 	void JumpTimerLogic(const float& DeltaTime);
+
+	float MaxStepHeight = 1.0f;
+
+	bool SteppingCheck(FHitResult& SteppingHit, const FHitResult& Hit);
 #pragma endregion
 
 
