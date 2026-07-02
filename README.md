@@ -19,9 +19,9 @@ Player Movement is based on Camera rotation projected onto a plane based on grav
 
 I also have Curves for quick speeding up and turning as well as a cornering force for better turning
 
-General Improvements To Make:
+I now have a fairly basic jumping system allowing multiple jumps with Coyote Time and Jump Buffer as well as variable jump height which uses impulses and can be customised based on minimum jump time and the downward impulses minimum
 
-Need to add jumping, jump buffer and coyote time
+General Improvements To Make:
 
 Need to Add Rotation Code for Collider for visual effects
 
@@ -44,8 +44,6 @@ Could add sliding from gravity but I think this is worse as it means that you ca
 Issues:
 
 KCC bouncing has been severly reduced but might still be there a bit
-
-Very Rarely the collider can get stuck inside another collider/surface
 
 When on very high slopes slows down and veers in a lateral direction moving very slowly
 
