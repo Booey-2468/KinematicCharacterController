@@ -128,6 +128,8 @@ public:
 
 	float MaxSlopeAngle = 80.0f;
 
+	float MinCreaseAngle = 110.0f;
+
 	float MaxStepHeight = 1.0f;
 
 	float MinStepDist = 0.2f;
@@ -145,7 +147,7 @@ public:
 
 	float SkinWidth = 0.02f;
 
-	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, SteppingData& SteppingInfo, const bool& IsGravity);
+	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, const FVector& CurrentPos, SteppingData& SteppingInfo, const bool& IsGravity);
 
 	bool SteppingCheck(SteppingData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel);
 
@@ -153,7 +155,7 @@ public:
 
 	UFUNCTION()
 	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-
+	 
 #pragma endregion
 
 

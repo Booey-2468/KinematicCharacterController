@@ -25,6 +25,7 @@ AKinematicCharacterController::AKinematicCharacterController()
 	USkeletalMeshComponent* Skeleton = CreateDefaultSubobject<USkeletalMeshComponent>("Character Mesh");
 	Skeleton->SetSkeletalMesh(CharMesh);
 	Skeleton->SetupAttachment(RootComponent);
+	Skeleton->SkeletalMesh = CharMesh;
 
 }
 
@@ -61,7 +62,7 @@ void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float
 }
 #pragma region Collision Detection And Response
 
-FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, SteppingData& SteppingInfo,const bool& IsGravity)
+FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, const FVector& CurrentPos, SteppingData& SteppingInfo,const bool& IsGravity)
 {
 	if (CurrentBounces >= MaxBounces || CurrentVel.IsNearlyZero())
 	{
@@ -83,6 +84,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 	if (Hit.bBlockingHit)
 	{
+		FVector PreviousNormal = FloorNormal;
 		FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
 		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
 
@@ -128,11 +130,18 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				FVector InitialVelXZ = ProjectOnPlane(InitialVel, GravityNormal);
 				float Scale = 0.0f;
 
+				if (Angle >= MinCreaseAngle)
+				{
+					if (!PreviousNormal.IsNearlyZero())
+						HitNormalXZ = Normalized(CrossProduct(FloorNormal, PreviousNormal));
+					else
+						HitNormalXZ = Normalized(CrossProduct(FloorNormal, GravityNormal));
+					return SnapToSurface;
+				}	// Attempt 1 at solving crease issue
 				if (!InitialVelXZ.IsNearlyZero())	// Avoids normalizing InitialVelXZ when its 0 so there is no /0
 				{
 					Scale = 1 - DotProduct(HitNormalXZ, -Normalized(InitialVelXZ));
 				}
-
 				if (IsGrounded && !IsGravity)
 				{				// Treats as flat wall if grounded and this is not the gravity check 
 					LeftoverVelocity = ProjectAndScale(ProjectOnPlane(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
@@ -146,6 +155,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			}
 			else
 			{
+				++CurrentBounces;
 				return SnapToSurface;
 			}
 			// Could also add momentum and bounciness to this by adding velocity from the impulse
@@ -281,7 +291,6 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	float InvDeltaTime = 1 / DeltaTime;
 	FVector NewPosition = ConvertFromUE5Units(GetActorLocation());
 
-	
 	Velocity += TotalImpulse * InvMass; // Changed Impulses to be applied directly to velocity as they are instant changes and p = MV and J = delta P/Momentum so I can just * InvMass 
 	
 	// Because of this I don't have to worry about how much of a timestep should it be divided by to be considered instantaneous
@@ -302,6 +311,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	NewPosition = ConvertToUE5Units(PreviousPosition);
 
 	SteppingData StepInfo;
+
+	FloorNormal = FVector::ZeroVector;
 
 	if (!TransformVelocity.IsNearlyZero())	// Removed Transform Velocity From
 	{
