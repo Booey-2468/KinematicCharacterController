@@ -39,6 +39,12 @@ struct KState
 	FVector VelocityDerivative;
 };
 
+struct SteppingData
+{
+	FHitResult StepHit;
+	FVector RemainingVel;
+};
+
 UCLASS()
 class AKinematicCharacterController : public APawn
 {
@@ -122,6 +128,10 @@ public:
 
 	float MaxSlopeAngle = 80.0f;
 
+	float MaxStepHeight = 1.0f;
+
+	float MinStepDist = 0.1f;
+
 	int MaxBounces = 10;
 
 	bool IsGrounded = false;
@@ -135,7 +145,11 @@ public:
 
 	float SkinWidth = 0.02f;
 
-	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, FHitResult& SteppingHit, const bool& IsGravity);
+	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, SteppingData& SteppingInfo, const bool& IsGravity);
+
+	bool SteppingCheck(SteppingData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel);
+
+	FVector SteppingLogic(const SteppingData& StepInfo, FVector& CurrentDisplacement);
 
 	UFUNCTION()
 	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -361,13 +375,7 @@ public:
 
 	void JumpTimerLogic(const float& DeltaTime);
 
-	float MaxStepHeight = 1.0f;
-
-	float AddedStepDisplacement = 0.1f;
-
-	bool SteppingCheck(FHitResult& SteppingHit, const FHitResult& Hit, const FVector& SnapToSurface);
-
-	FVector SteppingLogic(const FHitResult& StepHit);
+	void RotateToMovement(const FVector& MovementVector);
 #pragma endregion
 
 

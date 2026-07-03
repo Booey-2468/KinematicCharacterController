@@ -59,34 +59,9 @@ void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float
 	}
 
 }
+#pragma region Collision Detection And Response
 
-void AKinematicCharacterController::AddForce(const FVector& AddedForce, const ForceType& TypeOfForce)
-{
-	if (AddedForce.ContainsNaN())	// Ensures input Vectors don't contain unidentified or nigh infinite numbers and blocks entry if so
-		return;
-	else if (TypeOfForce == ForceType::Force)
-	{
-		Acceleration += AddedForce * InvMass;	// Changed From Velocity to Acceleration as a store as not all time Integration methods are based on velocity and allows for more accurate seperation
-	}
-	else if (TypeOfForce == ForceType::Impulse)	// Combined add force and impulse as impulse becomes a force after being divided by deltatime
-	{
-		TotalImpulse += AddedForce;
-	}
-	else if(TypeOfForce == ForceType::Acceleration)
-	{
-		Acceleration += AddedForce;
-	}
-}
-
-void AKinematicCharacterController::AddTransformVel(const FVector& AddedTransform)
-{
-	if (AddedTransform.ContainsNaN())
-		return;
-
-	TransformVelocity += AddedTransform;
-}
-
-FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, FHitResult& SteppingHit,const bool& IsGravity)
+FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, FVector CurrentPos, SteppingData& SteppingInfo,const bool& IsGravity)
 {
 	if (CurrentBounces >= MaxBounces || CurrentVel.IsNearlyZero())
 	{
@@ -98,11 +73,13 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	FHitResult Hit;
 
 	GetWorld()->DebugDrawTraceTag = "DebugLine";
-	FCollisionQueryParams params;
-	params.TraceTag = GetWorld()->DebugDrawTraceTag;
-	params.AddIgnoredActor(this);
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+	Params.bTraceComplex = true;
+	Params.TraceTag = GetWorld()->DebugDrawTraceTag;
 
-	GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), params);
+
+	GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
 
 	if (Hit.bBlockingHit)
 	{
@@ -141,7 +118,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			bool CanStep = false;
 
 			if (!IsGravity && IsGrounded)
-				CanStep = SteppingCheck(SteppingHit, Hit, SnapToSurface);	// The Stepping Check is done here in the Collision Detection and later dealt with after the displacemeant is done
+				CanStep = SteppingCheck(SteppingInfo, Hit, LeftoverVelocity);	// The Stepping Check is done here in the Collision Detection and later dealt with after the displacemeant is done
 
 			if (!CanStep)
 			{
@@ -175,13 +152,128 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			// Optonally could add impulses to other objects if physics is enabled on them
 		}
 		++CurrentBounces;	// Increments CurrentBounces
-		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, SteppingHit, IsGravity);
+		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, SteppingInfo, IsGravity);
 	}
 	if (CurrentVel.ContainsNaN())
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is it Bad " + CurrentVel.ContainsNaN());
 	}
 	return CurrentVel;
+}
+
+bool AKinematicCharacterController::SteppingCheck(SteppingData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel)
+{
+	if (LeftoverVel.IsNearlyZero())
+		return false;
+
+	GetWorld()->DebugDrawTraceTag = "DebugLine";
+	FCollisionQueryParams params;
+	params.TraceTag = GetWorld()->DebugDrawTraceTag;
+	params.AddIgnoredActor(this);
+
+	FCollisionShape Sphere = FCollisionShape::MakeSphere(CapsuleRadius);
+
+	FHitResult StepHit;
+
+	float VelMag = Magnitude(LeftoverVel);
+
+	const FVector VelDir = LeftoverVel / VelMag;
+
+	VelMag = (VelMag < MinStepDist) ? MinStepDist : VelMag;
+
+	FVector AddedSteppingDisp = Hit.Location + VelDir * ConvertToUE5Units(VelMag);
+
+	FVector LowerSphere = AddedSteppingDisp - GravityNormal * (CapsuleHalfHeight - CapsuleRadius);
+
+	FVector MaxHeight = LowerSphere + GravityNormal * (ConvertToUE5Units(MaxStepHeight) + (CapsuleHalfHeight - CapsuleRadius) * 2 + ConvertToUE5Units(SkinWidth));
+
+	GetWorld()->SweepSingleByChannel(StepHit, MaxHeight, LowerSphere, GetActorQuat(), ECC_WorldStatic, Sphere, params);
+
+	if (StepHit.bBlockingHit && !StepHit.bStartPenetrating && StepHit.Distance >= (CapsuleHalfHeight - CapsuleRadius) * 2 + ConvertToUE5Units(SkinWidth))
+	{
+		SteppingInfo.StepHit = StepHit;
+		SteppingInfo.RemainingVel = LeftoverVel;
+		return true;
+	}
+	return false;
+}
+
+FVector AKinematicCharacterController::SteppingLogic(const SteppingData& StepInfo, FVector& CurrentDisplacement)
+{
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "HasHit Stairs: " + FString::FromInt(StepInfo.StepHit.bBlockingHit && !StepInfo.StepHit.bStartPenetrating));
+	CurrentDisplacement += StepInfo.RemainingVel;
+	return StepInfo.StepHit.Location + GravityNormal * (CapsuleHalfHeight - CapsuleRadius + ConvertToUE5Units(SkinWidth));
+}
+
+void AKinematicCharacterController::OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	if (!OtherComp)
+		return;
+	// Hit Result now holds something as I am using hit and have switched to blocking collision as to truly benefit from overlapping 
+	// I would need to make my own physics engine and overlapping would've been fairly expensive comparitively even if I could do it
+	FVector SurfaceNormal = Hit.ImpactNormal;
+
+	if (Hit.bStartPenetrating)	// If the Hit was already penetrating from the beginning compute penetration
+	{
+		FMTDResult PenetrationResult;
+		if (Collider->ComputePenetration(PenetrationResult, OtherComp->GetCollisionShape(), OtherComp->GetComponentLocation(), OtherComp->GetComponentQuat()))
+		{
+			FVector CurrentLocation = Collider->GetComponentLocation();
+			FVector Depenetration = PenetrationResult.Direction * (PenetrationResult.Distance + 0.1f);
+			// Moves Collider Comp with sweep to avoid further penetration
+			Collider->MoveComponent(Depenetration, Collider->GetComponentRotation(), false);
+		}
+	}
+	float VelocityImpulse;
+	// In the end just needed to get the closest point on the component's collision to the player actor and base surface normal from that
+	if (OtherComp->IsSimulatingPhysics())
+	{
+		// Some impulses can be very sudden and very large very weird but not the worst
+		FVector OtherObjVelocity = ConvertFromUE5Units(OtherComp->GetPhysicsLinearVelocity());
+		float OtherObjMass = OtherComp->GetMass();
+		// Couldn't find how to reference restitution if ue5 physics material
+
+		CalculateBounceImpulse(Velocity - OtherObjVelocity, Mass + OtherObjMass, SurfaceNormal, VelocityImpulse);
+		FVector CharacterImpulse = VelocityImpulse * SurfaceNormal;		// Currently done along Impact Normal but may combine with projection method and change to a reflection of Impact Normal based on Initial velocity direction
+
+		FVector OtherObjImpulse = VelocityImpulse * -SurfaceNormal;
+
+		AddForce(CharacterImpulse, ForceType::Impulse);
+		OtherComp->AddImpulseAtLocation(OtherObjImpulse, Hit.ImpactPoint);
+	}
+	else
+	{
+		CalculateBounceImpulse(Velocity, Mass, SurfaceNormal, VelocityImpulse);
+		AddForce(VelocityImpulse * SurfaceNormal, ForceType::Impulse);
+	}
+}
+#pragma endregion
+#pragma region Physics Calc And Application
+
+void AKinematicCharacterController::AddForce(const FVector& AddedForce, const ForceType& TypeOfForce)
+{
+	if (AddedForce.ContainsNaN())	// Ensures input Vectors don't contain unidentified or nigh infinite numbers and blocks entry if so
+		return;
+	else if (TypeOfForce == ForceType::Force)
+	{
+		Acceleration += AddedForce * InvMass;	// Changed From Velocity to Acceleration as a store as not all time Integration methods are based on velocity and allows for more accurate seperation
+	}
+	else if (TypeOfForce == ForceType::Impulse)	// Combined add force and impulse as impulse becomes a force after being divided by deltatime
+	{
+		TotalImpulse += AddedForce;
+	}
+	else if (TypeOfForce == ForceType::Acceleration)
+	{
+		Acceleration += AddedForce;
+	}
+}
+
+void AKinematicCharacterController::AddTransformVel(const FVector& AddedTransform)
+{
+	if (AddedTransform.ContainsNaN())
+		return;
+
+	TransformVelocity += AddedTransform;
 }
 
 void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
@@ -209,29 +301,28 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	float OriginalMoveMag = Magnitude(MovementDisplacement);
 	NewPosition = ConvertToUE5Units(PreviousPosition);
 
-	FHitResult StepHit;
+	SteppingData StepInfo;
 
 	if (!TransformVelocity.IsNearlyZero())	// Removed Transform Velocity From
 	{
 		FVector TransformDisplacement = TransformVelocity * DeltaTime;
-		TransformDisplacement = CollideAndSlideCollision(TotalBounces, TransformDisplacement, TransformDisplacement, PreviousPosition, StepHit, false);
+		TransformDisplacement = CollideAndSlideCollision(TotalBounces, TransformDisplacement, TransformDisplacement, PreviousPosition, StepInfo, false);
 		NewPosition += ConvertToUE5Units(TransformDisplacement);
 	}
 	// Made so it adds to position as its velocity/displacement based rather than
 
-	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, ConvertFromUE5Units(NewPosition), StepHit, false);
+	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, ConvertFromUE5Units(NewPosition), StepInfo, false);
 
 	// Decided to do stepping here as otherwise you won't be able to tell what has been hit and where
 	// Then will set actor location here and then have it equal NewPosition
 
 	NewPosition += ConvertToUE5Units(MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
 
-	if(StepHit.bBlockingHit)
-		NewPosition = SteppingLogic(StepHit);
+	NewPosition = (StepInfo.StepHit.bBlockingHit) ? SteppingLogic(StepInfo, MovementDisplacement) : NewPosition;
 
 	int BouncesOnGround = TotalBounces;
 
-	GravityDisplacement = CollideAndSlideCollision(BouncesOnGround, GravityDisplacement, GravityDisplacement, ConvertFromUE5Units(NewPosition), StepHit, true);
+	GravityDisplacement = CollideAndSlideCollision(BouncesOnGround, GravityDisplacement, GravityDisplacement, ConvertFromUE5Units(NewPosition), StepInfo, true);
 
 	NewPosition += ConvertToUE5Units(GravityDisplacement);
 
@@ -297,47 +388,9 @@ FVector AKinematicCharacterController::CalculateGravityAccel(const FVector& Grav
 	return GravityDir * GravityMag;
 }
 
-void AKinematicCharacterController::OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+inline void AKinematicCharacterController::CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum)
 {
-	if (!OtherComp)
-		return;
-	// Hit Result now holds something as I am using hit and have switched to blocking collision as to truly benefit from overlapping 
-	// I would need to make my own physics engine and overlapping would've been fairly expensive comparitively even if I could do it
-	FVector SurfaceNormal = Hit.ImpactNormal;
-	
-	if (Hit.bStartPenetrating)	// If the Hit was already penetrating from the beginning compute penetration
-	{
-		FMTDResult PenetrationResult;
-		if (Collider->ComputePenetration(PenetrationResult, OtherComp->GetCollisionShape(), OtherComp->GetComponentLocation(), OtherComp->GetComponentQuat()))
-		{
-			FVector CurrentLocation = Collider->GetComponentLocation();
-			FVector Depenetration = PenetrationResult.Direction * (PenetrationResult.Distance + 0.1f);
-			// Moves Collider Comp with sweep to avoid further penetration
-			Collider->MoveComponent(Depenetration, Collider->GetComponentRotation(), false);
-		}
-	}
-	float VelocityImpulse;
-	// In the end just needed to get the closest point on the component's collision to the player actor and base surface normal from that
-	if (OtherComp->IsSimulatingPhysics())
-	{
-		// Some impulses can be very sudden and very large very weird but not the worst
-		FVector OtherObjVelocity = ConvertFromUE5Units(OtherComp->GetPhysicsLinearVelocity());
-		float OtherObjMass = OtherComp->GetMass();
-		// Couldn't find how to reference restitution if ue5 physics material
-
-		CalculateBounceImpulse(Velocity - OtherObjVelocity, Mass + OtherObjMass, SurfaceNormal, VelocityImpulse);
-		FVector CharacterImpulse = VelocityImpulse * SurfaceNormal;		// Currently done along Impact Normal but may combine with projection method and change to a reflection of Impact Normal based on Initial velocity direction
-
-		FVector OtherObjImpulse = VelocityImpulse * -SurfaceNormal;
-
-		AddForce(CharacterImpulse, ForceType::Impulse);
-		OtherComp->AddImpulseAtLocation(OtherObjImpulse, Hit.ImpactPoint);
-	}
-	else
-	{
-		CalculateBounceImpulse(Velocity, Mass, SurfaceNormal, VelocityImpulse);
-		AddForce(VelocityImpulse * SurfaceNormal, ForceType::Impulse);
-	}
+	ObjMomentum = ObjVelocity * ObjMass;
 }
 
 void AKinematicCharacterController::CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal , float& Impulse)
@@ -345,6 +398,7 @@ void AKinematicCharacterController::CalculateBounceImpulse(const FVector& Relati
 	Impulse = -(1 + CoefficientOfRestitution) * DotProduct(RelativeVelocity, SurfaceNormal);
 	Impulse *= TotalMass;
 }
+#pragma endregion
 
 inline float AKinematicCharacterController::Square(const float& NumberToSquare)
 {
@@ -362,10 +416,7 @@ inline float AKinematicCharacterController::Power(const float& MultNum, const in
 
 	return PoweredNum;
 }
-inline void AKinematicCharacterController::CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum)
-{
-	ObjMomentum = ObjVelocity * ObjMass;
-}
+
 FVector AKinematicCharacterController::ConvertToUE5Units(const FVector& Vector)
 {
 	return Vector * 100.0f;
@@ -499,7 +550,6 @@ void AKinematicCharacterController::CalculateRK4Acceleration(const FVector& Posi
 }
 
 #pragma endregion
-
 #pragma region Player Input
 
 void AKinematicCharacterController::PossessedBy(AController* NewController)
@@ -620,6 +670,8 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 
 	MovementForce = Normalized(MovementForce);
 
+	RotateToMovement(MovementForce);	 // Should Rotate player towards movement force
+
 	FVector DriftForce = -ProjectOnPlane(VelocityXZ, MovementForce) * CorneringStiffness;
 	//float SlopeScalingMod = (1 + (1 - DotProduct(FloorNormal, GravityNormal)) * SlopeMod);	// Added so slope can gain modifier when going up slopes
 
@@ -705,41 +757,11 @@ void AKinematicCharacterController::JumpTimerLogic(const float& DeltaTime)
 		JumpTimer += DeltaTime;
 	}
 }
-bool AKinematicCharacterController::SteppingCheck(FHitResult& SteppingHit, const FHitResult& Hit, const FVector& SnapToSurface)
+void AKinematicCharacterController::RotateToMovement(const FVector& MovementVector)
 {
-	if (SnapToSurface.IsNearlyZero())
-		return false;
-
-	GetWorld()->DebugDrawTraceTag = "DebugLine";
-	FCollisionQueryParams params;
-	params.TraceTag = GetWorld()->DebugDrawTraceTag;
-	params.AddIgnoredActor(this);
-
-	FCollisionShape Sphere = FCollisionShape::MakeSphere(CapsuleRadius);
-
-	FHitResult StepHit;
-
-	FVector AddedSteppingDisp = Hit.Location + Normalized(SnapToSurface) * ConvertToUE5Units(AddedStepDisplacement);
-
-	FVector LowerSphere = AddedSteppingDisp - GravityNormal * (CapsuleHalfHeight - CapsuleRadius);
-
-	FVector MaxHeight = LowerSphere + GravityNormal * (ConvertToUE5Units(MaxStepHeight) + (CapsuleHalfHeight - CapsuleRadius) * 2 + ConvertToUE5Units(SkinWidth));
-
-	GetWorld()->SweepSingleByChannel(StepHit, MaxHeight, LowerSphere, GetActorQuat(), ECC_WorldStatic, Sphere, params);
-
-	if (StepHit.bBlockingHit && !StepHit.bStartPenetrating && StepHit.Distance >= (CapsuleHalfHeight - CapsuleRadius) * 2 + ConvertToUE5Units(SkinWidth))
-	{
-		SteppingHit = StepHit;
-		return true;
-	}
-	return false;
+	if (MovementVector.IsNearlyZero())
+		return;
+	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), Normalized(MovementVector).Rotation().Quaternion(), 1.0).Rotator();
+	SetActorRotation(MovementRotation);
 }
-
-FVector AKinematicCharacterController::SteppingLogic(const FHitResult& StepHit)
-{
-	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "HasHit Stairs: " + FString::FromInt(StepHit.bBlockingHit && !StepHit.bStartPenetrating));
-	return StepHit.Location + GravityNormal * (CapsuleHalfHeight - CapsuleRadius + ConvertToUE5Units(SkinWidth));
-}
-
-
 #pragma endregion
