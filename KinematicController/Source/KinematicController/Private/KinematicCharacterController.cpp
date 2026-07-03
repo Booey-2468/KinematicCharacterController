@@ -140,7 +140,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		{
 			bool CanStep = false;
 
-			if (!IsGravity)
+			if (!IsGravity && IsGrounded)
 				CanStep = SteppingCheck(SteppingHit, Hit, SnapToSurface);	// The Stepping Check is done here in the Collision Detection and later dealt with after the displacemeant is done
 
 			if (!CanStep)
@@ -225,7 +225,7 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	// Then will set actor location here and then have it equal NewPosition
 
 	NewPosition += ConvertToUE5Units(MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
-	
+
 	if(StepHit.bBlockingHit)
 		NewPosition = SteppingLogic(StepHit);
 
@@ -241,6 +241,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	// Checks if gravity displacement hit something and if gravity was going down towards the ground
 	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnVector(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
+
+		
 	//if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%");
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
