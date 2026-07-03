@@ -130,7 +130,7 @@ public:
 
 	float MaxStepHeight = 1.0f;
 
-	float MinStepDist = 0.1f;
+	float MinStepDist = 0.2f;
 
 	int MaxBounces = 10;
 
