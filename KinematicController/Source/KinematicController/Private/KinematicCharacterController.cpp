@@ -130,14 +130,14 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				FVector InitialVelXZ = ProjectOnPlane(InitialVel, GravityNormal);
 				float Scale = 0.0f;
 
-				if (Angle >= MinCreaseAngle)
+				/*if (Angle >= MinCreaseAngle)
 				{
 					if (!PreviousNormal.IsNearlyZero())
 						HitNormalXZ = Normalized(CrossProduct(FloorNormal, PreviousNormal));
 					else
 						HitNormalXZ = Normalized(CrossProduct(FloorNormal, GravityNormal));
 					return SnapToSurface;
-				}	// Attempt 1 at solving crease issue
+				}*/ // Attempt 1 at solving crease issue
 				if (!InitialVelXZ.IsNearlyZero())	// Avoids normalizing InitialVelXZ when its 0 so there is no /0
 				{
 					Scale = 1 - DotProduct(HitNormalXZ, -Normalized(InitialVelXZ));
