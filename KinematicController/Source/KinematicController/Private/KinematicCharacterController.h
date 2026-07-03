@@ -363,7 +363,11 @@ public:
 
 	float MaxStepHeight = 1.0f;
 
-	bool SteppingCheck(FHitResult& SteppingHit, const FHitResult& Hit);
+	float AddedStepDisplacement = 0.2f;
+
+	bool SteppingCheck(FHitResult& SteppingHit, const FHitResult& Hit, const FVector& SnapToSurface);
+
+	FVector SteppingLogic(const FHitResult& StepHit);
 #pragma endregion
 
 

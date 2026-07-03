@@ -141,7 +141,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			bool CanStep = false;
 
 			if (!IsGravity)
-				CanStep = SteppingCheck(SteppingHit, Hit);
+				CanStep = SteppingCheck(SteppingHit, Hit, SnapToSurface);	// The Stepping Check is done here in the Collision Detection and later dealt with after the displacemeant is done
 
 			if (!CanStep)
 			{
@@ -221,15 +221,14 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 
 	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, ConvertFromUE5Units(NewPosition), StepHit, false);
 
-	// After this I'll do stepping Logic separately via sphere casting
-	// But I need to figure out how to find obstacles properly
 	// Decided to do stepping here as otherwise you won't be able to tell what has been hit and where
+	// Then will set actor location here and then have it equal NewPosition
 
-	if (StepHit.bBlockingHit)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "HasHit Stairs: " + FString::FromInt(StepHit.bBlockingHit && !StepHit.bStartPenetrating));
-	}
 	NewPosition += ConvertToUE5Units(MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
+	
+	if(StepHit.bBlockingHit)
+		NewPosition = SteppingLogic(StepHit);
+
 	int BouncesOnGround = TotalBounces;
 
 	GravityDisplacement = CollideAndSlideCollision(BouncesOnGround, GravityDisplacement, GravityDisplacement, ConvertFromUE5Units(NewPosition), StepHit, true);
@@ -247,11 +246,7 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
-
-	if (Velocity.ContainsNaN())
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Impulse:" + TotalImpulse.ToCompactString());
-	}
+	// Will have to use Movement Displacement for velocity though if stepping may temporarily stop the player
 	// Used better way to solve issue instead of Manually adding radius and what not instead was able to get capsule location at collision for the displacement 
 	// Snap To Surface now uses this which now doesn't overlap with anything
 
@@ -708,8 +703,11 @@ void AKinematicCharacterController::JumpTimerLogic(const float& DeltaTime)
 		JumpTimer += DeltaTime;
 	}
 }
-bool AKinematicCharacterController::SteppingCheck(FHitResult& SteppingHit, const FHitResult& Hit)
+bool AKinematicCharacterController::SteppingCheck(FHitResult& SteppingHit, const FHitResult& Hit, const FVector& SnapToSurface)
 {
+	if (SnapToSurface.IsNearlyZero())
+		return false;
+
 	GetWorld()->DebugDrawTraceTag = "DebugLine";
 	FCollisionQueryParams params;
 	params.TraceTag = GetWorld()->DebugDrawTraceTag;
@@ -719,17 +717,27 @@ bool AKinematicCharacterController::SteppingCheck(FHitResult& SteppingHit, const
 
 	FHitResult StepHit;
 
-	FVector LowerSphere = Hit.Location - GravityNormal * (CapsuleHalfHeight - CapsuleRadius);
+	FVector AddedSteppingDisp = Hit.Location + Normalized(SnapToSurface) * ConvertToUE5Units(AddedStepDisplacement);
 
-	FVector MaxHeight = LowerSphere + GravityNormal * ConvertToUE5Units(MaxStepHeight);
+	FVector LowerSphere = AddedSteppingDisp - GravityNormal * (CapsuleHalfHeight - CapsuleRadius);
+
+	FVector MaxHeight = LowerSphere + GravityNormal * (ConvertToUE5Units(MaxStepHeight) + (CapsuleHalfHeight - CapsuleRadius) * 2 + ConvertToUE5Units(SkinWidth));
 
 	GetWorld()->SweepSingleByChannel(StepHit, MaxHeight, LowerSphere, GetActorQuat(), ECC_WorldStatic, Sphere, params);
 
-	if (StepHit.bBlockingHit && !StepHit.bStartPenetrating)
+	if (StepHit.bBlockingHit && !StepHit.bStartPenetrating && StepHit.Distance >= (CapsuleHalfHeight - CapsuleRadius) * 2 + ConvertToUE5Units(SkinWidth))
 	{
 		SteppingHit = StepHit;
 		return true;
 	}
 	return false;
 }
+
+FVector AKinematicCharacterController::SteppingLogic(const FHitResult& StepHit)
+{
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "HasHit Stairs: " + FString::FromInt(StepHit.bBlockingHit && !StepHit.bStartPenetrating));
+	return StepHit.Location + GravityNormal * (CapsuleHalfHeight - CapsuleRadius + ConvertToUE5Units(SkinWidth));
+}
+
+
 #pragma endregion
