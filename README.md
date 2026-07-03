@@ -21,14 +21,14 @@ I also have Curves for quick speeding up and turning as well as a cornering forc
 
 I now have a fairly basic jumping system allowing multiple jumps with Coyote Time and Jump Buffer as well as variable jump height which uses impulses and can be customised based on minimum jump time and the downward impulses minimum
 
+I now have added Stepping Logic so when meeting a wall smaller than step height it should teleport on top of it to a certain extent
+
 General Improvements To Make:
 
 Need to Add Rotation Code for Collider for visual effects
 
 Would like to seperate the parts that deal with physics and the character controller part into a pawn class that inherents from the physics pawn class
 
-
-Would like to add some Stepping Logic so KCC can deal with steps and the like. This is a longer term goal.
 
 Would also like to add some Wall Running Logic again as a longer term goal.
 
@@ -42,11 +42,14 @@ If I did this there would also be the performance issue that every time I hit a 
 Could add sliding from gravity but I think this is worse as it means that you cant plainly stand anywhere on a slope
 
 Issues:
+Need to get Skeletal Mesh to actually show up
 
-KCC bouncing has been severly reduced but might still be there a bit
+I think this could be due to the fact I am using Normal instead of impact normal but on very small steps I have the issue of bouncing up them instead of stepping up them
 
 When on very high slopes slows down and veers in a lateral direction moving very slowly
 
 Friction max velocity may need some fine tuning
+KCC bouncing has been severly reduced but might still be there a bit
+
 
 Need to get Skeletal Mesh to actually show up and work
