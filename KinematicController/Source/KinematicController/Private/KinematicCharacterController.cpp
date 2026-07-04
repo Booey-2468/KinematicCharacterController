@@ -78,27 +78,25 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	Params.AddIgnoredActor(this);
 	Params.bTraceComplex = true;
 	Params.TraceTag = GetWorld()->DebugDrawTraceTag;
+	
+	
 
+	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
 
-	GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
-
-	if (Hit.bBlockingHit && !Hit.bStartPenetrating)
+	if (HasHit)
 	{
+		FVector PreviousNormal = FloorNormal;
 		FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
-		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
-
+		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth );
+		// Takig away penetration depth slightly helps
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
 
-		/*if (Magnitude(SnapToSurface) <= SkinWidth)	// Could maybe find way to make sure snap to surface is exactly 0.02
+		if (Hit.bStartPenetrating)
 		{
-			//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Lost Snapping:" + FString::SanitizeFloat(Magnitude(SnapToSurface)));
-			LeftoverVelocity = CurrentVel;	// Sets leftover velocity to current vel so snap to surface is not unilaterally lost
-			SnapToSurface = FVector::ZeroVector;
-		}*/
-
-
+			SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth - ConvertFromUE5Units(Hit.PenetrationDepth));
+		}
 		if (LeftoverVelocity == FVector::ZeroVector)
 		{
 			++CurrentBounces;
@@ -127,16 +125,13 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				// 1 - limits dot product between 0 and 1
 
 				FVector InitialVelXZ = ProjectOnPlane(InitialVel, GravityNormal);
-				float Scale = 0.0f;
+				float Scale = 1.0f;
 
-				/*if (Angle >= MinCreaseAngle)
+				if (Angle >= MinCreaseAngle && Magnitude(SnapToSurface) <= SkinWidth)	// Combined edge case
 				{
-					if (!PreviousNormal.IsNearlyZero())
-						HitNormalXZ = Normalized(CrossProduct(FloorNormal, PreviousNormal));
-					else
-						HitNormalXZ = Normalized(CrossProduct(FloorNormal, GravityNormal));
-					return SnapToSurface;
-				}*/ // Attempt 1 at solving crease issue
+					LeftoverVelocity = CurrentVel;
+					SnapToSurface = FVector::ZeroVector;
+				} // Attempt 1 at solving crease issue
 				if (!InitialVelXZ.IsNearlyZero())	// Avoids normalizing InitialVelXZ when its 0 so there is no /0
 				{
 					Scale = 1 - DotProduct(HitNormalXZ, -Normalized(InitialVelXZ));
@@ -164,10 +159,6 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		}
 		++CurrentBounces;	// Increments CurrentBounces
 		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, SteppingInfo, IsGravity);
-	}
-	else if (Hit.bStartPenetrating)
-	{
-		return FVector::ZeroVector;
 	}
 	return CurrentVel;
 }
@@ -348,7 +339,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 		
 	//if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%");
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
+
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
 	// Will have to use Movement Displacement for velocity though if stepping may temporarily stop the player
