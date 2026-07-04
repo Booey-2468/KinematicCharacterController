@@ -42,13 +42,12 @@ Could add sliding from gravity but I think this is worse as it means that you ca
 Issues:
 Need to get Skeletal Mesh to actually show up
 
+When on very high slopes slows down and veers in a lateral direction moving very slowly
+
 Ok so The collision detection does not work when on the underside of a plane or ejects you into space
 
 Also I think my code now handles creases pretty well as it uses a depenetration measure to move back just in case it does get stuck which it can and it treats creases as walls by projecting the floor normal on to gravity
-
-I think this could be due to the fact I am using Normal instead of impact normal but on very small steps I have the issue of bouncing up them instead of stepping up them
-
-When on very high slopes slows down and veers in a lateral direction moving very slowly
+Can have some issues when moving diagonally though so not a full amazing fix but I think this is the sweeps fault not mine though I could be wrong
 
 Friction max velocity may need some fine tuning
 KCC bouncing has been severly reduced but might still be there a bit
