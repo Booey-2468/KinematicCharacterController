@@ -25,8 +25,6 @@ I now have added Stepping Logic so when meeting a wall smaller than step height 
 
 General Improvements To Make:
 
-Need to Add Rotation Code for Collider for visual effects
-
 Would like to seperate the parts that deal with physics and the character controller part into a pawn class that inherents from the physics pawn class
 
 
@@ -43,6 +41,10 @@ Could add sliding from gravity but I think this is worse as it means that you ca
 
 Issues:
 Need to get Skeletal Mesh to actually show up
+
+Ok so The collision detection does not work when on the underside of a plane or ejects you into space
+
+Also I think my code now handles creases pretty well as it uses a depenetration measure to move back just in case it does get stuck which it can and it treats creases as walls by projecting the floor normal on to gravity
 
 I think this could be due to the fact I am using Normal instead of impact normal but on very small steps I have the issue of bouncing up them instead of stepping up them
 
