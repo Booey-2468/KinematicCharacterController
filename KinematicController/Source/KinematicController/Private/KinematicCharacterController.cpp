@@ -95,7 +95,8 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		if (Hit.bStartPenetrating)
 		{
-			SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth - ConvertFromUE5Units(Hit.PenetrationDepth));
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Hit Dist when Penetrating: " + FString::SanitizeFloat(Magnitude(LeftoverVelocity)));
+			SnapToSurface = -Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
 		}
 		if (LeftoverVelocity == FVector::ZeroVector)
 		{
@@ -127,11 +128,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				FVector InitialVelXZ = ProjectOnPlane(InitialVel, GravityNormal);
 				float Scale = 1.0f;
 
-				if (Angle >= MinCreaseAngle && Magnitude(SnapToSurface) <= SkinWidth)	// Combined edge case
-				{
-					LeftoverVelocity = CurrentVel;
-					SnapToSurface = FVector::ZeroVector;
-				} // Attempt 1 at solving crease issue
+
 				if (!InitialVelXZ.IsNearlyZero())	// Avoids normalizing InitialVelXZ when its 0 so there is no /0
 				{
 					Scale = 1 - DotProduct(HitNormalXZ, -Normalized(InitialVelXZ));
@@ -139,8 +136,6 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				if (IsGrounded && !IsGravity)
 				{				// Treats as flat wall if grounded and this is not the gravity check 
 					LeftoverVelocity = ProjectAndScale(ProjectAndScale(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
-					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Residual Vel: " + FString::SanitizeFloat(Magnitude(LeftoverVelocity)));
-
 					// Fixed by not normalizing the whole vector as scale is a decimal 0 - 1 scale
 					// Has Issue of not removing velocity
 				}
@@ -339,7 +334,7 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 		
 	//if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%");
-	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
+	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
 
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
