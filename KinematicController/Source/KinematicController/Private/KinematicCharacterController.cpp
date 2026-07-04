@@ -85,8 +85,10 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 	if (HasHit)
 	{
-		FVector PreviousNormal = FloorNormal;
-		FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
+		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > 0.7f)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
+			FloorNormal = Hit.ImpactNormal;
+		else
+			FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
 		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth );
 		// Takig away penetration depth slightly helps
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
@@ -95,7 +97,6 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		if (Hit.bStartPenetrating)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Hit Dist when Penetrating: " + FString::SanitizeFloat(Magnitude(LeftoverVelocity)));
 			SnapToSurface = -Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
 		}
 		if (LeftoverVelocity == FVector::ZeroVector)
@@ -110,7 +111,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
-
+		
 			LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal);
 		}
 		else
