@@ -85,7 +85,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 	if (HasHit)
 	{
-		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > 0.7f)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
+		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > 0.8f)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
 			FloorNormal = Hit.ImpactNormal;
 		else
 			FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
@@ -129,7 +129,12 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				FVector InitialVelXZ = ProjectOnPlane(InitialVel, GravityNormal);
 				float Scale = 1.0f;
 
-
+				if (Angle <= MinCreaseAngle && Magnitude(SnapToSurface) <= SkinWidth)
+				{
+						// This helps to avoid the issue of penetration but hinders normal movement so added this
+					LeftoverVelocity = CurrentVel;
+					SnapToSurface = FVector::ZeroVector;
+				}
 				if (!InitialVelXZ.IsNearlyZero())	// Avoids normalizing InitialVelXZ when its 0 so there is no /0
 				{
 					Scale = 1 - DotProduct(HitNormalXZ, -Normalized(InitialVelXZ));
