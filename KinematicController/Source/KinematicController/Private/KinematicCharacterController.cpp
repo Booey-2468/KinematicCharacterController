@@ -82,9 +82,8 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 	GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
 
-	if (Hit.bBlockingHit)
+	if (Hit.bBlockingHit && !Hit.bStartPenetrating)
 	{
-		FVector PreviousNormal = FloorNormal;
 		FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
 		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
 
@@ -144,14 +143,16 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				}
 				if (IsGrounded && !IsGravity)
 				{				// Treats as flat wall if grounded and this is not the gravity check 
-					LeftoverVelocity = ProjectAndScale(ProjectOnPlane(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
+					LeftoverVelocity = ProjectAndScale(ProjectAndScale(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Residual Vel: " + FString::SanitizeFloat(Magnitude(LeftoverVelocity)));
+
 					// Fixed by not normalizing the whole vector as scale is a decimal 0 - 1 scale
 					// Has Issue of not removing velocity
 				}
 				else
 				{
 					LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal) * Scale;
-				}
+				}				
 			}
 			else
 			{
@@ -164,9 +165,9 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		++CurrentBounces;	// Increments CurrentBounces
 		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, SteppingInfo, IsGravity);
 	}
-	if (CurrentVel.ContainsNaN())
+	else if (Hit.bStartPenetrating)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is it Bad " + CurrentVel.ContainsNaN());
+		return FVector::ZeroVector;
 	}
 	return CurrentVel;
 }
