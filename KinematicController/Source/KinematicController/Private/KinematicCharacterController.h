@@ -331,6 +331,8 @@ public:
 
 	bool HasFallen = false;
 
+	float LostVelPercent = 0.0f;
+
 	int MaxJumpCount = 1;
 	int CurrentJumpCount = 0;
 

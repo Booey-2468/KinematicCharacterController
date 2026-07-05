@@ -79,27 +79,33 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	Params.bTraceComplex = true;
 	Params.TraceTag = GetWorld()->DebugDrawTraceTag;
 	
-	
-
 	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
 
 	if (HasHit || Hit.bStartPenetrating)
 	{
+		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
+		// Takig away penetration depth slightly helps
+		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
+
 		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > 0.8f)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
 			FloorNormal = Hit.ImpactNormal;
 		else
 			FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
-		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth );
-		// Takig away penetration depth slightly helps
-		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
+
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
 
+		/*if (Magnitude(LeftoverVelocity) < SkinWidth && Magnitude(SnapToSurface) <= SkinWidth)
+		{
+			SnapToSurface = FVector::ZeroVector;
+			LeftoverVelocity = CurrentVel;
+		}*/
 		if (Hit.bStartPenetrating)
 		{
 			SnapToSurface = FloorNormal * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
+			LeftoverVelocity = CurrentVel;
 		}
-		if (LeftoverVelocity == FVector::ZeroVector)
+		if (LeftoverVelocity.IsNearlyZero())
 		{
 			++CurrentBounces;
 			return SnapToSurface;
@@ -332,8 +338,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	IsInContact = (TotalBounces > 0) ? true : false;
 
 		
-	//if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
-		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%");
+	if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%" + "Lost Vel Percent: " + FString::FromInt(LostVelPercent) + "%");
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
 
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
@@ -676,6 +682,7 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 
 	MovementForce = MovementForce * MoveSpeed * CalculateSpeedMod(VelocityXZ, MovementForce);	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
 	// Should go roughly
+	//AddTransformVel(MovementForce);
 	AddForce(MovementForce + DriftForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why
 }
 float AKinematicCharacterController::CalculateSpeedMod(const FVector& CurrentVelocity, const FVector& MovementDir)
