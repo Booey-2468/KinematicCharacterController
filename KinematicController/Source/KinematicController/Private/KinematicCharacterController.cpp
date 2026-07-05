@@ -83,7 +83,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
 
-	if (HasHit)
+	if (HasHit || Hit.bStartPenetrating)
 	{
 		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > 0.8f)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
 			FloorNormal = Hit.ImpactNormal;
@@ -97,7 +97,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		if (Hit.bStartPenetrating)
 		{
-			SnapToSurface = -Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
+			SnapToSurface = FloorNormal * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
 		}
 		if (LeftoverVelocity == FVector::ZeroVector)
 		{
@@ -127,14 +127,8 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				// 1 - limits dot product between 0 and 1
 
 				FVector InitialVelXZ = ProjectOnPlane(InitialVel, GravityNormal);
-				float Scale = 1.0f;
+				float Scale = 0.0f;
 
-				if (Angle <= MinCreaseAngle && Magnitude(SnapToSurface) <= SkinWidth)
-				{
-						// This helps to avoid the issue of penetration but hinders normal movement so added this
-					LeftoverVelocity = CurrentVel;
-					SnapToSurface = FVector::ZeroVector;
-				}
 				if (!InitialVelXZ.IsNearlyZero())	// Avoids normalizing InitialVelXZ when its 0 so there is no /0
 				{
 					Scale = 1 - DotProduct(HitNormalXZ, -Normalized(InitialVelXZ));
