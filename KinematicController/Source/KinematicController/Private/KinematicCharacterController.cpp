@@ -79,36 +79,29 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	Params.bTraceComplex = true;
 	Params.TraceTag = GetWorld()->DebugDrawTraceTag;
 	
-	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * Normalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
+	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * SafeNormalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
 
 	if (HasHit || Hit.bStartPenetrating)
 	{
-		FVector SnapToSurface = Normalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
+		FVector SnapToSurface = SafeNormalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
 		// Takig away penetration depth slightly helps
 		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
 
-		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > 0.8f)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
+		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > MinSlopeSimilarity)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
 			FloorNormal = Hit.ImpactNormal;
 		else
 			FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
 
-
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
 
-		/*if (Magnitude(LeftoverVelocity) < SkinWidth && Magnitude(SnapToSurface) <= SkinWidth)
+		/*if (!IsGravity && Magnitude(SnapToSurface) <= SkinWidth)
 		{
 			SnapToSurface = FVector::ZeroVector;
-			LeftoverVelocity = CurrentVel;
 		}*/
 		if (Hit.bStartPenetrating)
 		{
 			SnapToSurface = FloorNormal * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
 			LeftoverVelocity = CurrentVel;
-		}
-		if (LeftoverVelocity.IsNearlyZero())
-		{
-			++CurrentBounces;
-			return SnapToSurface;
 		}
 		if (Angle <= MaxSlopeAngle)
 		{
@@ -129,16 +122,14 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 			if (!CanStep)
 			{
-				FVector HitNormalXZ = Normalized(ProjectOnPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
+				FVector HitNormalXZ = SafeNormalized(ProjectOnNormalizedPlane(FloorNormal, GravityNormal));	// Added normalization at beginning as ProjectOnPlane needs it
+
 				// 1 - limits dot product between 0 and 1
 
-				FVector InitialVelXZ = ProjectOnPlane(InitialVel, GravityNormal);
-				float Scale = 0.0f;
-
-				if (!InitialVelXZ.IsNearlyZero())	// Avoids normalizing InitialVelXZ when its 0 so there is no /0
-				{
-					Scale = 1 - DotProduct(HitNormalXZ, -Normalized(InitialVelXZ));
-				}
+				FVector InitialVelXZ = ProjectOnNormalizedPlane(InitialVel, GravityNormal);
+				
+				float Scale = 1 - DotProduct(HitNormalXZ, -SafeNormalized(InitialVelXZ));
+			
 				if (IsGrounded && !IsGravity)
 				{				// Treats as flat wall if grounded and this is not the gravity check 
 					LeftoverVelocity = ProjectAndScale(ProjectAndScale(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
@@ -294,7 +285,7 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	int TotalBounces = 0;
 	FVector TotalDisplacement = NewPosition - PreviousPosition;	// Decided to use new position instead of velocity so its not unneeded calculation also easier to add in transform movement options 
 	// May be better to use actual displacement for other time integration methods but velocity verlet should be fairly accurate
-	FVector GravityDisplacement = ProjectOnVector(TotalDisplacement, GravityNormal);
+	FVector GravityDisplacement = ProjectOnNormal(TotalDisplacement, GravityNormal);
 
 	float GravMag = Magnitude(GravityDisplacement);
 
@@ -334,12 +325,12 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	TotalBounces += BouncesOnGround;
 
 	// Checks if gravity displacement hit something and if gravity was going down towards the ground
-	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnVector(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
+	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnNormal(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
 
 		
-	if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%" + "Lost Vel Percent: " + FString::FromInt(LostVelPercent) + "%");
+	//if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
+		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%" );
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
 
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
@@ -362,11 +353,11 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 
 	float VelMag = Magnitude(Velocity);
 
-	if (IsInContact && VelMag > 0.001f)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
+	if (IsInContact && VelMag > 0.005f)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
 		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
 		FVector FrictionAccel = CalculateFrictionAccel(Velocity, FloorNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
-		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-Normalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
+		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-SafeNormalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
 		AddForce(FrictionAccel, ForceType::Acceleration);
 	}
 	AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
@@ -380,7 +371,7 @@ float AKinematicCharacterController::CalculateNormalForce(const FVector& Surface
 FVector AKinematicCharacterController::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
 {
 	// Realized issue with KCC is that more worse surface normal means that gravity is going against both gravity more as well as friction
-	return -Normalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
+	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
 }
 
 FVector AKinematicCharacterController::CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass)
@@ -440,7 +431,18 @@ float AKinematicCharacterController::ConvertFromUE5Units(const float& NumToConve
 }
 #pragma region VectorMathematics
 
-inline FVector AKinematicCharacterController::Normalized(const FVector& FullVector)
+inline FVector AKinematicCharacterController::SafeNormalized(const FVector& FullVector)
+{
+	float SqrMag = DotProduct(FullVector, FullVector);
+	if (SqrMag == 1.0f)	// Added Safety checks
+		return FullVector;
+	else if (FullVector.IsNearlyZero())
+		return FVector::ZeroVector; FullVector.GetSafeNormal();
+
+	return FullVector / FMath::Sqrt(SqrMag);
+}
+
+inline FVector AKinematicCharacterController::UnSafeNormalized(const FVector& FullVector)
 {
 	return FullVector / Magnitude(FullVector);
 }
@@ -450,14 +452,27 @@ inline float AKinematicCharacterController::Magnitude(const FVector& FullVector)
 	return FMath::Sqrt(DotProduct(FullVector, FullVector));
 }
 
+inline FVector AKinematicCharacterController::ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector)
+{
+	if (ProjectionVector.IsNearlyZero())
+		return FVector::ZeroVector;
+
+	return DotProduct(VectorToProject, ProjectionVector) / DotProduct(ProjectionVector, ProjectionVector) * ProjectionVector;
+}
+
+inline FVector AKinematicCharacterController::ProjectOnNormal(const FVector& VectorToProject, const FVector& ProjectionNormal)
+{
+	return DotProduct(VectorToProject, ProjectionNormal) * ProjectionNormal;
+}
+
 inline FVector AKinematicCharacterController::ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal)
 {
 	return FullVector - ProjectOnVector(FullVector, PlaneNormal);
 }
 
-inline FVector AKinematicCharacterController::ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector)
+inline FVector AKinematicCharacterController::ProjectOnNormalizedPlane(const FVector& FullVector, const FVector& PlaneNormal)
 {
-	return DotProduct(VectorToProject, ProjectionVector) / DotProduct(ProjectionVector, ProjectionVector) * ProjectionVector;
+	return FullVector - ProjectOnNormal(FullVector, PlaneNormal);
 }
 
 inline float AKinematicCharacterController::DotProduct(const FVector& FullVector, const FVector& VectorNormal)
@@ -476,18 +491,26 @@ inline FVector AKinematicCharacterController::RotateVector(const FVector& Vector
 	return VectorToRotate * FMath::Cos(Angle) + CrossProduct(Axis, VectorToRotate) * FMath::Sin(Angle) + Axis * DotProduct(Axis, VectorToRotate) * (1.0f - FMath::Cos(Angle));
 }
 
+inline FVector AKinematicCharacterController::ReflectVectorOnNormal(const FVector& VectorToReflect, const FVector& ReflectionNormal)
+{
+	return VectorToReflect - 2 * DotProduct(VectorToReflect, ReflectionNormal) * ReflectionNormal;
+}
+
 inline float AKinematicCharacterController::AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2)
 {
 	return FMath::Acos(DotProduct(Vector1, Vector2) / (Magnitude(Vector1) * Magnitude(Vector2))) * (180 / PI);
 }
 
+inline FVector AKinematicCharacterController::ProjectAndScaleNormalized(const FVector& FullVector, const FVector& PlaneNormal)
+{
+	// This is not the cause there is some loss of extremely small vectors but nothing much else and doesn't sync with the staggering of the KCC
+	return SafeNormalized(ProjectOnNormalizedPlane(FullVector, PlaneNormal)) * Magnitude(FullVector);
+}
+
 inline FVector AKinematicCharacterController::ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal)
 {
-	FVector Plane = ProjectOnPlane(FullVector, PlaneNormal);
-	if (Plane.IsNearlyZero() || Plane.ContainsNaN())
-		return FVector::ZeroVector;
 	// This is not the cause there is some loss of extremely small vectors but nothing much else and doesn't sync with the staggering of the KCC
-	return Normalized(Plane) * Magnitude(FullVector);
+	return SafeNormalized(ProjectOnPlane(FullVector, PlaneNormal)) * Magnitude(FullVector);
 }
 #pragma endregion
 #pragma region TimeIntegrationMethods
@@ -639,14 +662,14 @@ void AKinematicCharacterController::AddPlayerInputKeys()
 
 void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 {
-	FVector VelocityXZ = ProjectOnPlane(Velocity, GravityNormal);
+	FVector VelocityXZ = ProjectOnNormalizedPlane(Velocity, GravityNormal);
 
 	if (Magnitude(VelocityXZ) > MaxSpeed)
 		return;
 
 	FVector MovementForce = FVector::ZeroVector;
-	FVector TransformForwardXZ = Normalized(ProjectOnPlane(MovementAxis->GetActorForwardVector(), GravityNormal));
-	FVector TransformRightXZ = Normalized(ProjectOnPlane(MovementAxis->GetActorRightVector(), GravityNormal));
+	FVector TransformForwardXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorForwardVector(), GravityNormal));
+	FVector TransformRightXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorRightVector(), GravityNormal));
 
 	
 	InputKey* Key;
@@ -670,14 +693,11 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 		MovementForce += TransformRightXZ;
 	}
 
-	if (MovementForce.IsNearlyZero())	// Finally realised issue movement force is initially set to 0 and when normalizing you do 0/0 hence an infinite nan(ind) number
-		return;
-
-	MovementForce = Normalized(MovementForce);
+	MovementForce = SafeNormalized(MovementForce);
 
 	RotateToMovement(MovementForce);	 // Should Rotate player towards movement force
 
-	FVector DriftForce = -ProjectOnPlane(VelocityXZ, MovementForce) * CorneringStiffness;
+	FVector DriftForce = -ProjectOnNormalizedPlane(VelocityXZ, MovementForce) * CorneringStiffness;
 	//float SlopeScalingMod = (1 + (1 - DotProduct(FloorNormal, GravityNormal)) * SlopeMod);	// Added so slope can gain modifier when going up slopes
 
 	MovementForce = MovementForce * MoveSpeed * CalculateSpeedMod(VelocityXZ, MovementForce);	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
@@ -726,7 +746,7 @@ void AKinematicCharacterController::JumpLogic()
 		AddForce(JumpMagnitude * GravityNormal * Mass, ForceType::Impulse);
 		++CurrentJumpCount;
 		JumpTimer = 0.0f;
-		Velocity -= ProjectOnVector(Velocity, GravityNormal);
+		Velocity -= ProjectOnNormal(Velocity, GravityNormal);
 	}
 	else if (ShouldFall)
 	{
@@ -767,7 +787,7 @@ void AKinematicCharacterController::RotateToMovement(const FVector& MovementVect
 {
 	if (MovementVector.IsNearlyZero())
 		return;
-	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), Normalized(MovementVector).Rotation().Quaternion(), 1.0).Rotator();
+	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), SafeNormalized(MovementVector).Rotation().Quaternion(), 1.0).Rotator();
 	SetActorRotation(MovementRotation);
 }
 #pragma endregion

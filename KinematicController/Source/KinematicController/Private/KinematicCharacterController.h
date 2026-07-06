@@ -128,7 +128,7 @@ public:
 
 	float MaxSlopeAngle = 80.0f;
 
-	float MinCreaseAngle = 110.0f;
+	float MinSlopeSimilarity = 0.7f;
 
 	float MaxStepHeight = 1.0f;
 
@@ -236,7 +236,14 @@ public:
 	/// </summary>
 	/// <param name="FullVector"> Input Vector to be Normalized</param>
 	/// <returns>Returns a normalized vector </returns>
-	inline FVector Normalized(const FVector& FullVector);
+	inline FVector SafeNormalized(const FVector& FullVector);
+
+	/// <summary>
+	/// Custom Function to get normalized Vector by dividing by magnitude
+	/// </summary>
+	/// <param name="FullVector"> Input Vector to be Normalized</param>
+	/// <returns>Returns a normalized vector </returns>
+	inline FVector UnSafeNormalized(const FVector& FullVector);
 	/// <summary>
 	/// Custom Function to calculate magnitude of a vector by squaring and adding vector together then square rooting
 	/// </summary>
@@ -252,6 +259,8 @@ public:
 	/// <param name="ProjectionVector"> Vector that is being projected on</param>
 	/// <returns> Returns the projected vector</returns>
 	inline FVector ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector);
+
+	inline FVector ProjectOnNormal(const FVector& VectorToProject, const FVector& ProjectionNormal);
 	/// <summary>
 	/// Removes the Projection of Full vector on plane normal to get the vector part parallel to the normal
 	/// </summary>
@@ -259,6 +268,8 @@ public:
 	/// <param name="PlaneNormal"></param>
 	/// <returns></returns>
 	inline FVector ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal);
+
+	inline FVector ProjectOnNormalizedPlane(const FVector& FullVector, const FVector& PlaneNormal);
 
 	inline float AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2);
 
@@ -289,6 +300,14 @@ public:
 	inline FVector RotateVector(const FVector& VectorToRotate, const FVector& Axis , float Angle, bool IsDegrees = true);
 
 	/// <summary>
+	/// Basically how this works is you take away the vector that is going 
+	/// </summary>
+	/// <param name="VectorToReflect"></param>
+	/// <param name="ReflectionNormal"></param>
+	/// <returns></returns>
+	inline FVector ReflectVectorOnNormal(const FVector& VectorToReflect, const FVector& ReflectionNormal);
+
+	/// <summary>
 	/// Unrealistic Version of Project On Plane that keeps the same magnitude essentially rotating it 
 	/// This is done to keep same velocity for the KCC for player experience but also means that I can't merge Movement Displacement and Gravity Displacement
 	/// As this would mean gravity also pushes character movement which creates the issue of first hitting an object in movement displacement and which stunts jumps or falling as the player wouldn't be blocked if these were merged
@@ -298,6 +317,13 @@ public:
 	/// <param name="PlaneNormal"></param>
 	/// <returns></returns>
 	inline FVector ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal);
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <param name="FullVector"></param>
+	/// <param name="PlaneNormal"></param>
+	/// <returns></returns>
+	inline FVector ProjectAndScaleNormalized(const FVector& FullVector, const FVector& PlaneNormal);
 
 #pragma endregion
 
@@ -330,8 +356,6 @@ public:
 	float VariableHeightImp = 2.0f;
 
 	bool HasFallen = false;
-
-	float LostVelPercent = 0.0f;
 
 	int MaxJumpCount = 1;
 	int CurrentJumpCount = 0;
