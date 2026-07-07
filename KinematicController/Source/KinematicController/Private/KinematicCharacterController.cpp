@@ -62,14 +62,14 @@ void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float
 }
 #pragma region Collision Detection And Response
 
-FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, const FVector& CurrentPos, SteppingData& SteppingInfo,const bool& IsGravity)
+FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const ConstantCollideAndSlideData& CollisionData, EditableCollideAndSlideData& SteppingInfo)
 {
-	if (CurrentBounces >= MaxBounces || CurrentVel.IsNearlyZero())
+	if (CurrentBounces >= MaxBounces || CollisionData.CurrentVel.IsNearlyZero())
 	{
 		return FVector::ZeroVector;
 	}
 
-	float dist = Magnitude(CurrentVel) + SkinWidth;
+	float dist = Magnitude(CollisionData.CurrentVel) + SkinWidth;
 
 	FHitResult Hit;
 
@@ -79,45 +79,58 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	Params.bTraceComplex = true;
 	Params.TraceTag = GetWorld()->DebugDrawTraceTag;
 	
-	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CurrentPos), ConvertToUE5Units(CurrentPos + (dist * SafeNormalized(CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
+	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CollisionData.CurrentPos), ConvertToUE5Units(CollisionData.CurrentPos + (dist * SafeNormalized(CollisionData.CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
 
 	if (HasHit || Hit.bStartPenetrating)
 	{
-		FVector SnapToSurface = SafeNormalized(CurrentVel) * (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
-		// Takig away penetration depth slightly helps
-		FVector LeftoverVelocity = CurrentVel - SnapToSurface;
+		float SnapDist = (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
+
+		FVector SnapToSurface = SafeNormalized(CollisionData.CurrentVel) * SnapDist;
+
+		if (SnapDist < 0.0f)
+			SteppingInfo.CorrectionVel += SnapToSurface;
+
+
+		// Ok I think I actually have the major fix to bouncing up slopes and basically I need to create a struct for collide and slide data
+		// Then I need an extra FVector called CorrectionVel which is just the displacement that was used when Hit.Distance is smaller than SkinWidth
+		// This is so that I can take it away after adding the Displacement to NewPosition this is so that the Velocity doesn't get affected by going up a bit correcting the position
+		// as this gets converted to Velocity resulting in a bump upward and is more heavily exaggerated on slope
+		// This also makes sense as to why there more slowness ascending slopes and why Transform vel wasn't working with slopes too well
+
+		FVector LeftoverVelocity = CollisionData.CurrentVel - SnapToSurface;
 
 		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > MinSlopeSimilarity)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
 			FloorNormal = Hit.ImpactNormal;
 		else
-			FloorNormal = Hit.Normal;	// May need to use regular normal as impact normal is giving inaccurate results
+			FloorNormal = Hit.Normal;
 
-		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	// Nothing wrong with this
+		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	
 
-		/*if (!IsGravity && Magnitude(SnapToSurface) <= SkinWidth)
+		if (!CollisionData.IsGravity && Magnitude(SnapToSurface) <= SkinWidth)
 		{
 			SnapToSurface = FVector::ZeroVector;
-		}*/
+		}
 		if (Hit.bStartPenetrating)
 		{
 			SnapToSurface = FloorNormal * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
-			LeftoverVelocity = CurrentVel;
+			LeftoverVelocity = CollisionData.CurrentVel;
+			SteppingInfo.CorrectionVel += SnapToSurface;
 		}
 		if (Angle <= MaxSlopeAngle)
 		{
-			if (IsGravity)	// If the check is for gravity this makes sure there is no sliding due to gravity
+			if (CollisionData.IsGravity)	// If the check is for gravity this makes sure there is no sliding due to gravity
 			{
 				++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
 		
-			LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal);
+			LeftoverVelocity = ProjectAndScaleNormalized(LeftoverVelocity, FloorNormal);
 		}
 		else
 		{
 			bool CanStep = false;
 
-			if (!IsGravity && IsGrounded)
+			if (!CollisionData.IsGravity && IsGrounded)
 				CanStep = SteppingCheck(SteppingInfo, Hit, LeftoverVelocity);	// The Stepping Check is done here in the Collision Detection and later dealt with after the displacemeant is done
 
 			if (!CanStep)
@@ -126,20 +139,20 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 				// 1 - limits dot product between 0 and 1
 
-				FVector InitialVelXZ = ProjectOnNormalizedPlane(InitialVel, GravityNormal);
+				FVector InitialVelXZ = ProjectOnNormalizedPlane(CollisionData.InitialVel, GravityNormal);
 				
 				float Scale = 1 - DotProduct(HitNormalXZ, -SafeNormalized(InitialVelXZ));
 			
-				if (IsGrounded && !IsGravity)
+				if (IsGrounded && !CollisionData.IsGravity)
 				{				// Treats as flat wall if grounded and this is not the gravity check 
-					LeftoverVelocity = ProjectAndScale(ProjectAndScale(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
+					LeftoverVelocity = ProjectAndScaleNormalized(ProjectAndScaleNormalized(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
 					// Fixed by not normalizing the whole vector as scale is a decimal 0 - 1 scale
 					// Has Issue of not removing velocity
 				}
 				else
 				{
-					LeftoverVelocity = ProjectAndScale(LeftoverVelocity, FloorNormal) * Scale;
-				}				
+					LeftoverVelocity = ProjectAndScaleNormalized(LeftoverVelocity, FloorNormal) * Scale;
+				}		
 			}
 			else
 			{
@@ -150,12 +163,13 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			// Optonally could add impulses to other objects if physics is enabled on them
 		}
 		++CurrentBounces;	// Increments CurrentBounces
-		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, LeftoverVelocity, InitialVel, CurrentPos + SnapToSurface, SteppingInfo, IsGravity);
+		ConstantCollideAndSlideData CollisionInfo = ConstantCollideAndSlideData(LeftoverVelocity, CollisionData.CurrentPos + SnapToSurface, CollisionData.InitialVel, CollisionData.IsGravity);
+		return SnapToSurface + CollideAndSlideCollision(CurrentBounces, CollisionInfo, SteppingInfo);
 	}
-	return CurrentVel;
+	return CollisionData.CurrentVel;
 }
 
-bool AKinematicCharacterController::SteppingCheck(SteppingData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel)
+bool AKinematicCharacterController::SteppingCheck(EditableCollideAndSlideData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel)
 {
 	if (LeftoverVel.IsNearlyZero())
 		return false;
@@ -192,7 +206,7 @@ bool AKinematicCharacterController::SteppingCheck(SteppingData& SteppingInfo, co
 	return false;
 }
 
-FVector AKinematicCharacterController::SteppingLogic(const SteppingData& StepInfo, FVector& CurrentDisplacement)
+FVector AKinematicCharacterController::SteppingLogic(const EditableCollideAndSlideData& StepInfo, FVector& CurrentDisplacement)
 {
 	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "HasHit Stairs: " + FString::FromInt(StepInfo.StepHit.bBlockingHit && !StepInfo.StepHit.bStartPenetrating));
 	CurrentDisplacement += StepInfo.RemainingVel;
@@ -294,32 +308,44 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	float OriginalMoveMag = Magnitude(MovementDisplacement);
 	NewPosition = ConvertToUE5Units(PreviousPosition);
 
-	SteppingData StepInfo;
+	EditableCollideAndSlideData StepInfo;
 
 	FloorNormal = FVector::ZeroVector;
 
 	if (!TransformVelocity.IsNearlyZero())	// Removed Transform Velocity From
 	{
 		FVector TransformDisplacement = TransformVelocity * DeltaTime;
-		TransformDisplacement = CollideAndSlideCollision(TotalBounces, TransformDisplacement, TransformDisplacement, PreviousPosition, StepInfo, false);
+
+		ConstantCollideAndSlideData CollisionInfo = ConstantCollideAndSlideData(TransformDisplacement, PreviousPosition, TransformDisplacement, false);
+
+		TransformDisplacement = CollideAndSlideCollision(TotalBounces, CollisionInfo, StepInfo);
 		NewPosition += ConvertToUE5Units(TransformDisplacement);
 	}
 	// Made so it adds to position as its velocity/displacement based rather than
 
-	MovementDisplacement = CollideAndSlideCollision(TotalBounces, MovementDisplacement, MovementDisplacement, ConvertFromUE5Units(NewPosition), StepInfo, false);
+	ConstantCollideAndSlideData CollisionInfo = ConstantCollideAndSlideData(MovementDisplacement, ConvertFromUE5Units(NewPosition), MovementDisplacement, false);
+
+	MovementDisplacement = CollideAndSlideCollision(TotalBounces, CollisionInfo, StepInfo);
 
 	// Decided to do stepping here as otherwise you won't be able to tell what has been hit and where
 	// Then will set actor location here and then have it equal NewPosition
 
 	NewPosition += ConvertToUE5Units(MovementDisplacement);	// Now seperating displacement from new position so that it can also be used to change velocity
 
+	MovementDisplacement -= StepInfo.CorrectionVel;
+	StepInfo.CorrectionVel = FVector::ZeroVector;
+
 	NewPosition = (StepInfo.StepHit.bBlockingHit) ? SteppingLogic(StepInfo, MovementDisplacement) : NewPosition;
 
 	int BouncesOnGround = TotalBounces;
 
-	GravityDisplacement = CollideAndSlideCollision(BouncesOnGround, GravityDisplacement, GravityDisplacement, ConvertFromUE5Units(NewPosition), StepInfo, true);
+	CollisionInfo = ConstantCollideAndSlideData(GravityDisplacement, ConvertFromUE5Units(NewPosition), GravityDisplacement, true);
+	
+	GravityDisplacement = CollideAndSlideCollision(BouncesOnGround, CollisionInfo, StepInfo);
 
 	NewPosition += ConvertToUE5Units(GravityDisplacement);
+
+	GravityDisplacement -= StepInfo.CorrectionVel;
 
 	BouncesOnGround -= TotalBounces;
 	TotalBounces += BouncesOnGround;

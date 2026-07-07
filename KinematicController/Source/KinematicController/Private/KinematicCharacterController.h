@@ -38,11 +38,32 @@ struct KState
 	FVector PositionDerivative;
 	FVector VelocityDerivative;
 };
-
-struct SteppingData
+/// <summary>
+/// Stores both stepping data that is used for stepping and correction vel allowing for smooth movement along slopes
+/// </summary>
+struct EditableCollideAndSlideData	// These are variables that are actively editable during Collide And Slide functions
 {
 	FHitResult StepHit;
-	FVector RemainingVel;
+	FVector RemainingVel = FVector::ZeroVector;
+	FVector CorrectionVel = FVector::ZeroVector;
+};
+/// <summary>
+/// 
+/// </summary>
+struct ConstantCollideAndSlideData	// While these are only set before collide and slide is called again
+{
+	FVector CurrentVel;
+	FVector CurrentPos;
+	FVector InitialVel;
+	bool IsGravity;
+
+	ConstantCollideAndSlideData(const FVector& CurrentVel, const FVector& CurrentPos, const FVector& InitialVel, const bool& IsGravity)
+	{
+		this->CurrentVel = CurrentVel;
+		this->CurrentPos = CurrentPos;
+		this->InitialVel = InitialVel;
+		this->IsGravity = IsGravity;
+	}
 };
 
 UCLASS()
@@ -59,7 +80,11 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
-	// Called every frame
+	/// <summary>
+	/// Calls Every Physics Frame and Calls all physics and movement related Functions
+	/// </summary>
+	/// <param name="DeltaTime"> The amount of time that the physics frame covers </param>
+	/// <param name="SimTime"></param>
 	virtual void AsyncPhysicsTickActor(float DeltaTime, float SimTime) override;
 
 #pragma region Physics Calc And Application
@@ -85,6 +110,10 @@ public:
 
 	float DragCoefficent = 1.0f;
 
+	/// <summary>
+	/// This handles all the resulting physics, movement and collision handling as well as stepping
+	/// </summary>
+	/// <param name="DeltaTime"> Amount of time moved over time, also used for Time Integration</param>
 	void ApplyVelocity(const float& DeltaTime);
 
 	/// <summary>
@@ -147,11 +176,11 @@ public:
 
 	float SkinWidth = 0.02f;
 
-	FVector CollideAndSlideCollision(int& CurrentBounces, const FVector& CurrentVel, const FVector& InitialVel, const FVector& CurrentPos, SteppingData& SteppingInfo, const bool& IsGravity);
+	FVector CollideAndSlideCollision(int& CurrentBounces, const ConstantCollideAndSlideData& CollisionData , EditableCollideAndSlideData& SteppingInfo);
 
-	bool SteppingCheck(SteppingData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel);
+	bool SteppingCheck(EditableCollideAndSlideData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel);
 
-	FVector SteppingLogic(const SteppingData& StepInfo, FVector& CurrentDisplacement);
+	FVector SteppingLogic(const EditableCollideAndSlideData& StepInfo, FVector& CurrentDisplacement);
 
 	UFUNCTION()
 	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -253,7 +282,7 @@ public:
 
 	/// <summary>
 	/// Projects the first vector onto the projection vector
-	/// Using equation V . P/|P|sqr * P
+	/// Using equation V.P/ P.P * P
 	/// </summary>
 	/// <param name="VectorToProject"> Vector that is projetced onto the projection vector</param>
 	/// <param name="ProjectionVector"> Vector that is being projected on</param>
@@ -269,6 +298,12 @@ public:
 	/// <returns></returns>
 	inline FVector ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal);
 
+	/// <summary>
+	/// Removes the Projection of Full vector on plane normal to get the vector part parallel to the normal
+	/// </summary>
+	/// <param name="FullVector"></param>
+	/// <param name="PlaneNormal"></param>
+	/// <returns></returns>
 	inline FVector ProjectOnNormalizedPlane(const FVector& FullVector, const FVector& PlaneNormal);
 
 	inline float AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2);
@@ -285,8 +320,8 @@ public:
 	/// <summary>
 	/// Used to Get the normal between 2 vectors
 	/// </summary>
-	/// <param name="Vector1"></param>
-	/// <param name="Vector2"></param>
+	/// <param name="Vector1"> The First Vector To Calculate the normal</param>
+	/// <param name="Vector2"> The First Vector To Calculate the normal</param>
 	/// <returns></returns>
 	inline FVector CrossProduct(const FVector& Vector1, const FVector& Vector2);
 	/// <summary>
@@ -310,18 +345,20 @@ public:
 	/// <summary>
 	/// Unrealistic Version of Project On Plane that keeps the same magnitude essentially rotating it 
 	/// This is done to keep same velocity for the KCC for player experience but also means that I can't merge Movement Displacement and Gravity Displacement
-	/// As this would mean gravity also pushes character movement which creates the issue of first hitting an object in movement displacement and which stunts jumps or falling as the player wouldn't be blocked if these were merged
-	/// Not sure if I want to keep this to be honest
+	/// Without separating them with ProjectOnPlane after hitting the first object considered a floor
 	/// </summary>
-	/// <param name="FullVector"></param>
-	/// <param name="PlaneNormal"></param>
-	/// <returns></returns>
+	/// <param name="FullVector"> Is used for the scaling Magnitude and the direction to be projected along the plane</param>
+	/// <param name="PlaneNormal"> This is used as the Normal to confine the vector to its corresponding plane, This does not need to be normalized</param>
+	/// <returns> The Full Vector Projected and rescaled onto the plane</returns>
 	inline FVector ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal);
 	/// <summary>
-	/// 
+	/// Unrealistic Version of Project On Plane that keeps the same magnitude essentially rotating it 
+	/// This is done to keep same velocity for the KCC for player experience but also means that I can't merge Movement Displacement and Gravity Displacement
+	/// Without separating them with ProjectOnPlane after hitting the first object considered a floor
+	/// This version uses ProjectOnPlaneNormalized as this has much better performance but means you need to have a normalized plane
 	/// </summary>
-	/// <param name="FullVector"></param>
-	/// <param name="PlaneNormal"></param>
+	/// <param name="FullVector"> Is used for the scaling Magnitude and the direction to be projected along the plane</param>
+	/// <param name="PlaneNormal"> This is used as the Normal to confine the vector to its corresponding plane, This needs to be normalized</param>
 	/// <returns></returns>
 	inline FVector ProjectAndScaleNormalized(const FVector& FullVector, const FVector& PlaneNormal);
 
