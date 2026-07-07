@@ -22,11 +22,8 @@ AKinematicCharacterController::AKinematicCharacterController()
 	Collider->SetNotifyRigidBodyCollision(true);
 	Collider->SetMaxDepenetrationVelocity(NAME_None, 0.0f);
 
-	USkeletalMeshComponent* Skeleton = CreateDefaultSubobject<USkeletalMeshComponent>("Character Mesh");
-	Skeleton->SetSkeletalMesh(CharMesh);
+	Skeleton = CreateDefaultSubobject<USkeletalMeshComponent>("Character Mesh");
 	Skeleton->SetupAttachment(RootComponent);
-	Skeleton->SkeletalMesh = CharMesh;
-
 }
 
 // Called when the game starts or when spawned
@@ -38,6 +35,15 @@ void AKinematicCharacterController::BeginPlay()
 		Collider->OnComponentHit.AddDynamic(this, &AKinematicCharacterController::OnCharacterHit);
 	}
 	InvMass = 1 / Mass;	// Need to do again if mass is ever changed
+}
+
+void AKinematicCharacterController::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	if (Skeleton)
+	{
+		Skeleton->SetSkeletalMesh(CharMesh);
+	}
 }
 
 void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
@@ -64,7 +70,7 @@ void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float
 
 FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const ConstantCollideAndSlideData& CollisionData, EditableCollideAndSlideData& SteppingInfo)
 {
-	if (CurrentBounces >= MaxBounces || CollisionData.CurrentVel.IsNearlyZero())
+	if (CurrentBounces >= MaxBounces)
 	{
 		return FVector::ZeroVector;
 	}
@@ -83,21 +89,20 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 	if (HasHit || Hit.bStartPenetrating)
 	{
-		float SnapDist = (ConvertFromUE5Units(Hit.Distance) - SkinWidth);
+		float SnapDist = ConvertFromUE5Units(Hit.Distance) - SkinWidth;
 
 		FVector SnapToSurface = SafeNormalized(CollisionData.CurrentVel) * SnapDist;
 
-		if (SnapDist < 0.0f)
-			SteppingInfo.CorrectionVel += SnapToSurface;
+		FVector LeftoverVelocity = CollisionData.CurrentVel - SnapToSurface;
 
-
+		if (SnapDist < 0.0f && !Hit.bStartPenetrating)	// Avoids excess correction vel but this is creating an issue going against walls
+			SteppingInfo.CorrectionVel += SnapToSurface;	// Might No longer add as it may create too much correction vel
+		
 		// Ok I think I actually have the major fix to bouncing up slopes and basically I need to create a struct for collide and slide data
 		// Then I need an extra FVector called CorrectionVel which is just the displacement that was used when Hit.Distance is smaller than SkinWidth
 		// This is so that I can take it away after adding the Displacement to NewPosition this is so that the Velocity doesn't get affected by going up a bit correcting the position
 		// as this gets converted to Velocity resulting in a bump upward and is more heavily exaggerated on slope
 		// This also makes sense as to why there more slowness ascending slopes and why Transform vel wasn't working with slopes too well
-
-		FVector LeftoverVelocity = CollisionData.CurrentVel - SnapToSurface;
 
 		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > MinSlopeSimilarity)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
 			FloorNormal = Hit.ImpactNormal;
@@ -106,10 +111,11 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	
 
-		if (!CollisionData.IsGravity && Magnitude(SnapToSurface) <= SkinWidth)
+		/*if (Magnitude(SnapToSurface) <= SkinWidth)
 		{
 			SnapToSurface = FVector::ZeroVector;
-		}
+			LeftoverVelocity = CollisionData.CurrentVel;
+		}*/
 		if (Hit.bStartPenetrating)
 		{
 			SnapToSurface = FloorNormal * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
@@ -145,7 +151,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			
 				if (IsGrounded && !CollisionData.IsGravity)
 				{				// Treats as flat wall if grounded and this is not the gravity check 
-					LeftoverVelocity = ProjectAndScaleNormalized(ProjectAndScaleNormalized(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
+					LeftoverVelocity = ProjectAndScaleNormalized(ProjectOnNormalizedPlane(LeftoverVelocity, GravityNormal), HitNormalXZ) * Scale;
 					// Fixed by not normalizing the whole vector as scale is a decimal 0 - 1 scale
 					// Has Issue of not removing velocity
 				}
@@ -320,6 +326,8 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 
 		TransformDisplacement = CollideAndSlideCollision(TotalBounces, CollisionInfo, StepInfo);
 		NewPosition += ConvertToUE5Units(TransformDisplacement);
+
+		StepInfo.CorrectionVel = FVector::ZeroVector;
 	}
 	// Made so it adds to position as its velocity/displacement based rather than
 
@@ -386,7 +394,10 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-SafeNormalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
 		AddForce(FrictionAccel, ForceType::Acceleration);
 	}
-	AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
+	if(!IsGrounded)
+		AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
+	else
+		AddForce(CalculateDragAccel(Velocity, GroundDragCoefficient, InvMass), ForceType::Acceleration);
 }
 
 float AKinematicCharacterController::CalculateNormalForce(const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& FrictionCoeff)
@@ -813,7 +824,7 @@ void AKinematicCharacterController::RotateToMovement(const FVector& MovementVect
 {
 	if (MovementVector.IsNearlyZero())
 		return;
-	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), SafeNormalized(MovementVector).Rotation().Quaternion(), 1.0).Rotator();
+	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), SafeNormalized(MovementVector).Rotation().Quaternion(), 0.2).Rotator();
 	SetActorRotation(MovementRotation);
 }
 #pragma endregion

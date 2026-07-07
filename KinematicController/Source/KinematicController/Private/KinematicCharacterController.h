@@ -79,6 +79,8 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+
 public:	
 	/// <summary>
 	/// Calls Every Physics Frame and Calls all physics and movement related Functions
@@ -108,7 +110,7 @@ public:
 
 	float FrictionCoefficent = 0.5f;
 
-	float DragCoefficent = 1.0f;
+	float DragCoefficent = 0.4f;
 
 	/// <summary>
 	/// This handles all the resulting physics, movement and collision handling as well as stepping
@@ -157,7 +159,7 @@ public:
 
 	float MaxSlopeAngle = 80.0f;
 
-	float MinSlopeSimilarity = 0.7f;
+	float MinSlopeSimilarity = 0.8f;
 
 	float MaxStepHeight = 1.0f;
 
@@ -366,6 +368,9 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	USkeletalMesh* CharMesh;
+	UPROPERTY(EditAnywhere)
+	USkeletalMeshComponent* Skeleton;
+
 
 #pragma region Player Input
 
@@ -380,7 +385,10 @@ public:
 
 	float AirSpeed = 0.1f;
 
-	float CorneringStiffness = 2.0f;
+	float GroundDragCoefficient = 5.0f; // Removes Velocity so that Velocity is instantly removed when on ground
+	// Means that you can control the amoun of slide
+
+	float CorneringStiffness = 3.0f;
 
 	UPROPERTY(EditAnywhere)
 	UCurveFloat* CorneringCurve;
