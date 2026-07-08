@@ -50,7 +50,7 @@ void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float
 {
 	if (Camera && PlayerController)
 	{
-		AddMovementInput(Camera);
+		AddMovementInput(Camera, DeltaTime);
 		JumpTimerLogic(DeltaTime);
 		JumpLogic();
 	}
@@ -97,7 +97,6 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		if (SnapDist < 0.0f && !Hit.bStartPenetrating)	// Avoids excess correction vel but this is creating an issue going against walls
 			SteppingInfo.CorrectionVel += SnapToSurface;	// Might No longer add as it may create too much correction vel
-		
 		// Ok I think I actually have the major fix to bouncing up slopes and basically I need to create a struct for collide and slide data
 		// Then I need an extra FVector called CorrectionVel which is just the displacement that was used when Hit.Distance is smaller than SkinWidth
 		// This is so that I can take it away after adding the Displacement to NewPosition this is so that the Velocity doesn't get affected by going up a bit correcting the position
@@ -697,7 +696,7 @@ void AKinematicCharacterController::AddPlayerInputKeys()
 	InputManager->AddInputKey(EKeys::SpaceBar, MinimumInputFrames);
 }
 
-void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
+void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const float& DeltaTime)
 {
 	FVector VelocityXZ = ProjectOnNormalizedPlane(Velocity, GravityNormal);
 
@@ -732,7 +731,11 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis)
 
 	MovementForce = SafeNormalized(MovementForce);
 
-	RotateToMovement(MovementForce);	 // Should Rotate player towards movement force
+	if (MovementForce == FVector::ZeroVector)
+		return;
+
+	RotateToMovement(MovementForce, DeltaTime);	 // Should Rotate player towards movement force
+
 
 	FVector DriftForce = -ProjectOnNormalizedPlane(VelocityXZ, MovementForce) * CorneringStiffness;
 	//float SlopeScalingMod = (1 + (1 - DotProduct(FloorNormal, GravityNormal)) * SlopeMod);	// Added so slope can gain modifier when going up slopes
@@ -772,7 +775,7 @@ void AKinematicCharacterController::JumpLogic()
 
 	bool CanJump = Key->HasBeenPressed || (JumpBufferTimer > 0.0f && IsGrounded) || (!IsGrounded && CoyoteTimer > 0.0f && Key->HasBeenPressed);
 
-	CanJump = CanJump && CurrentJumpCount < MaxJumpCount;
+	CanJump = CanJump && CurrentJumpCount < MaxJumpCount && (CurrentJumpCount < 1 || JumpTimer > MinJumpTime);	// Aded min Jump time check so that double jumps have a min jump time
 
 	float UpwardVel = DotProduct(Velocity, GravityNormal);
 
@@ -820,11 +823,11 @@ void AKinematicCharacterController::JumpTimerLogic(const float& DeltaTime)
 		JumpTimer += DeltaTime;
 	}
 }
-void AKinematicCharacterController::RotateToMovement(const FVector& MovementVector)
+void AKinematicCharacterController::RotateToMovement(const FVector& MovementVector, const float& DeltaTime)
 {
 	if (MovementVector.IsNearlyZero())
 		return;
-	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), SafeNormalized(MovementVector).Rotation().Quaternion(), 0.2).Rotator();
+	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), SafeNormalized(MovementVector).Rotation().Quaternion(), DeltaTime * 2).Rotator();
 	SetActorRotation(MovementRotation);
 }
 #pragma endregion

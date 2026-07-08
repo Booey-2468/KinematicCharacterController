@@ -108,7 +108,7 @@ public:
 
 	float CoefficientOfRestitution = 0.5f;
 
-	float FrictionCoefficent = 0.5f;
+	float FrictionCoefficent = 0.7f;
 
 	float DragCoefficent = 0.4f;
 
@@ -383,7 +383,7 @@ public:
 
 	float MaxSpeed = 6.0f;
 
-	float AirSpeed = 0.1f;
+	float AirSpeed = 0.3f;
 
 	float GroundDragCoefficient = 5.0f; // Removes Velocity so that Velocity is instantly removed when on ground
 	// Means that you can control the amoun of slide
@@ -402,14 +402,14 @@ public:
 
 	bool HasFallen = false;
 
-	int MaxJumpCount = 1;
+	int MaxJumpCount = 2;
 	int CurrentJumpCount = 0;
 
-	float JumpBufferTime = 0.2f;
+	float JumpBufferTime = 0.1f;
 
 	float JumpBufferTimer = 0.0f;
 
-	float CoyoteTime = 0.2f;
+	float CoyoteTime = 0.05f;
 
 	float CoyoteTimer = 0.0f;
 
@@ -440,7 +440,7 @@ public:
 
 	void AddPlayerInputKeys();
 
-	void AddMovementInput(AActor* MovementAxis);
+	void AddMovementInput(AActor* MovementAxis, const float& DeltaTime);
 
 	float CalculateSpeedMod(const FVector& CurrentVelocity, const FVector& MovementDir);
 
@@ -448,7 +448,7 @@ public:
 
 	void JumpTimerLogic(const float& DeltaTime);
 
-	void RotateToMovement(const FVector& MovementVector);
+	void RotateToMovement(const FVector& MovementVector, const float& DeltaTime);
 #pragma endregion
 
 
