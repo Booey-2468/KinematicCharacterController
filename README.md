@@ -29,6 +29,9 @@ General Improvements To Make:
 
 Would like to seperate the parts that deal with physics and the character controller part into a pawn class that inherents from the physics pawn class
 
+Get No periodic slowing on medium slopes and No Slowness and veering on high slopes.
+
+Also preferably no periodic speed boost when sliding along walls.
 
 Would also like to add some Wall Running Logic again as a longer term goal.
 
