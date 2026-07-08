@@ -97,11 +97,6 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		if (SnapDist < 0.0f && !Hit.bStartPenetrating)	// Avoids excess correction vel but this is creating an issue going against walls
 			SteppingInfo.CorrectionVel += SnapToSurface;	// Might No longer add as it may create too much correction vel
-		// Ok I think I actually have the major fix to bouncing up slopes and basically I need to create a struct for collide and slide data
-		// Then I need an extra FVector called CorrectionVel which is just the displacement that was used when Hit.Distance is smaller than SkinWidth
-		// This is so that I can take it away after adding the Displacement to NewPosition this is so that the Velocity doesn't get affected by going up a bit correcting the position
-		// as this gets converted to Velocity resulting in a bump upward and is more heavily exaggerated on slope
-		// This also makes sense as to why there more slowness ascending slopes and why Transform vel wasn't working with slopes too well
 
 		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > MinSlopeSimilarity)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
 			FloorNormal = Hit.ImpactNormal;
@@ -362,9 +357,13 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	IsInContact = (TotalBounces > 0) ? true : false;
 
 		
+	// Ok so my Movement with TransformVel is somewhat fine which means the issue is indeed velocity and possibly how my Collision Detection can affect it
+	// It seems that the Collision Detection may have an issue with smaller Velocities
+	
+	
 	//if(Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 100)
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%" );
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
+	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
 
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
@@ -698,14 +697,19 @@ void AKinematicCharacterController::AddPlayerInputKeys()
 
 void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const float& DeltaTime)
 {
+	//FVector MovementNormal = (IsGrounded) ? FloorNormal : GravityNormal;
+
+	FVector MovementNormal = GravityNormal;
 	FVector VelocityXZ = ProjectOnNormalizedPlane(Velocity, GravityNormal);
+
 
 	if (Magnitude(VelocityXZ) > MaxSpeed)
 		return;
 
+
 	FVector MovementForce = FVector::ZeroVector;
-	FVector TransformForwardXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorForwardVector(), GravityNormal));
-	FVector TransformRightXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorRightVector(), GravityNormal));
+	FVector TransformForwardXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorForwardVector(), MovementNormal));
+	FVector TransformRightXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorRightVector(), MovementNormal));
 
 	
 	InputKey* Key;
@@ -734,8 +738,7 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const
 	if (MovementForce == FVector::ZeroVector)
 		return;
 
-	RotateToMovement(MovementForce, DeltaTime);	 // Should Rotate player towards movement force
-
+	RotateToMovement(SafeNormalized(ProjectOnNormalizedPlane(MovementForce, GravityNormal)), DeltaTime);	 // Should Rotate player towards movement force
 
 	FVector DriftForce = -ProjectOnNormalizedPlane(VelocityXZ, MovementForce) * CorneringStiffness;
 	//float SlopeScalingMod = (1 + (1 - DotProduct(FloorNormal, GravityNormal)) * SlopeMod);	// Added so slope can gain modifier when going up slopes
