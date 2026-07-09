@@ -379,7 +379,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* DefaultMappingContext;
 
-	float MoveSpeed = 4.0f;
+	float MoveSpeed = 2.0f;
 
 	float MaxSpeed = 6.0f;
 
