@@ -23,7 +23,7 @@ I now have a fairly basic jumping system allowing multiple jumps with Coyote Tim
 
 I now have added Stepping Logic so when meeting a wall smaller than step height it should teleport on top of it if there is available space
 
-Now on most slopes under 40 degrees there are no movement issues
+Now on all slopes 50 degrees or under there is perfect movement
 
 General Improvements To Make:
 
@@ -44,7 +44,8 @@ Issues:
 
 Would like to get stepping working a bit better as sometimes you collide instead of step up
 
-When on high slopes e.g. 40+ slows down and veers in a lateral direction moving very slowly or on lower slopes experiences a bit of bouncing
+When on a slope of 60 degrees goes up it slowly but this may be due to there not being a big enough grounding check
+When on high slopes e.g. 70+ slows down and veers in a lateral direction moving very slowly or on lower slopes experiences a bit of bouncing
 
 Ok so The collision detection does not work when on the underside of a plane or ejects you into space
 
