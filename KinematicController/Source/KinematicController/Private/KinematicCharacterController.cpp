@@ -75,7 +75,18 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		return FVector::ZeroVector;
 	}
 
+	// Decided that for gravity checks I should add some distance for ground checking
+
 	float dist = Magnitude(CollisionData.CurrentVel) + SkinWidth;
+	float VelDot = DotProduct(CollisionData.CurrentVel, GravityNormal);
+
+	if (CollisionData.IsGravity)
+	{
+		if (VelDot >= 0 && VelDot < SkinWidth)
+			dist -= GroundingCheck;
+		else if (VelDot <= 0)
+			dist += GroundingCheck;
+	}
 
 	FHitResult Hit;
 
@@ -90,26 +101,47 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	if (HasHit || Hit.bStartPenetrating)
 	{
 		float SnapDist = ConvertFromUE5Units(Hit.Distance) - SkinWidth;
+		if (CollisionData.IsGravity)
+		{
+			if (VelDot >= 0 && VelDot < SkinWidth)
+				SnapDist += GroundingCheck;
+			else if (VelDot <= 0)
+				SnapDist -= GroundingCheck;
+		}
 
 		FVector SnapToSurface = SafeNormalized(CollisionData.CurrentVel) * SnapDist;
 
 		FVector LeftoverVelocity = CollisionData.CurrentVel - SnapToSurface;
 
-		if (SnapDist < 0.0f && !Hit.bStartPenetrating)	// Avoids excess correction vel but this is creating an issue going against walls
-			SteppingInfo.CorrectionVel = SnapToSurface;	// Might No longer add as it may create too much correction vel
+		/*else if (!CollisionData.IsGravity && SnapDist <= SkinWidth)
+		{
+			SteppingInfo.CorrectionVel += SnapToSurface;
+		}*/
+		// Ok Next thing to do is check 2 things one whether snap to surface is causing the issues or is it current vel if current vel
+		// I dont believe thats something I may be able to fix otherwise I can hopefully find a way
 
 		if (DotProduct(Hit.ImpactNormal, Hit.Normal) > MinSlopeSimilarity)	// Checks whether the impact normal and normal are fairly similar if so the impact normal can be trusted to use
 			FloorNormal = Hit.ImpactNormal;
 		else
-			FloorNormal = Hit.Normal;
+			FloorNormal = Hit.Normal;	// This is good likely doesn't need changing
+
+		/*float SnapDot = DotProduct(SnapToSurface, FloorNormal);	// This reverted to what it was when adding that snap dist must be bigger than 0 meaning it is the corrrection code that may indeed be causing the issue
+
+		if (SnapDist <= SkinWidth && SnapDot >= 0.0f)
+		{
+			SnapToSurface -= SnapDot * FloorNormal;
+			LeftoverVelocity += SnapDot * FloorNormal;
+		}*/
+
+		if (SnapDist <= 0.0f && !Hit.bStartPenetrating)	// Avoids excess correction vel but this is creating an issue going against walls
+		{
+			SteppingInfo.CorrectionVel += SnapToSurface;	// Might No longer add as it may create too much correction vel
+		}
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	
 
-		/*if (Magnitude(SnapToSurface) <= SkinWidth)
-		{
-			SnapToSurface = FVector::ZeroVector;
-			LeftoverVelocity = CollisionData.CurrentVel;
-		}*/
+		if (DotProduct(SnapToSurface, FloorNormal) > 0)
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Bad issue:" + FString::SanitizeFloat(DotProduct(SnapToSurface, FloorNormal)));
 		if (Hit.bStartPenetrating)
 		{
 			SnapToSurface = FloorNormal * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
@@ -341,6 +373,7 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 
 	NewPosition = (StepInfo.StepHit.bBlockingHit) ? SteppingLogic(StepInfo, MovementDisplacement) : NewPosition;
 
+
 	int BouncesOnGround = TotalBounces;
 
 	CollisionInfo = ConstantCollideAndSlideData(GravityDisplacement, ConvertFromUE5Units(NewPosition), GravityDisplacement, true);
@@ -355,19 +388,22 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	TotalBounces += BouncesOnGround;
 
 	// Checks if gravity displacement hit something and if gravity was going down towards the ground
-	IsGrounded = (BouncesOnGround > 0 && DotProduct(ProjectOnNormal(TotalDisplacement, GravityNormal), GravityNormal) < 0) ? true : false;
+	IsGrounded = (BouncesOnGround > 0 && DotProduct(GravityDisplacement, GravityNormal) <= 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
 
-		
+
 	// Ok so my Movement with TransformVel is somewhat fine which means the issue is indeed velocity and possibly how my Collision Detection can affect it
 	// It seems that the Collision Detection may have an issue with smaller Velocities
 	
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Accel:" + Acceleration.ToCompactString());
-	// There is an active acceleration stopping the KCC when moving
+	//if(DotProduct(MovementDisplacement, GravityNormal) > 0 && DotProduct(TotalDisplacement, GravityNormal) < 0)
+		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Accel:" + FString::SanitizeFloat(DotProduct(GravityDisplacement, GravityNormal)) + " " + FString::SanitizeFloat(DotProduct(TotalDisplacement, GravityNormal)));
+	// KCC is not grounded at times causing Speed mod to be 0.3f
+
+	// Ok so clearly the issue is being produced by movement displacement adding Vertical height
 
 	//if (Magnitude(MovementDisplacement) / OriginalMoveMag * 100 < 99)
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%");
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(TotalBounces));
+	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(BouncesOnGround));
 
 	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
@@ -746,30 +782,28 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const
 
 	FVector DriftForce = -ProjectOnNormalizedPlane(VelocityXZ, MovementForce) * CorneringStiffness;
 
-	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Move Mod:" + FString::SanitizeFloat(CalculateSpeedMod(VelocityXZ, MovementForce)));
+	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Move Mod:" + FString::SanitizeFloat(CalculateSpeedMod(VelocityXZ, MovementForce)));
 
 	//float SlopeScalingMod = (1 + (1 - DotProduct(FloorNormal, GravityNormal)) * SlopeMod);	// Added so slope can gain modifier when going up slopes
 	MovementForce = MovementForce * MoveSpeed * CalculateSpeedMod(VelocityXZ, MovementForce);	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
 	
 	
 	// Should go roughly
-	AddTransformVel(MovementForce);
-	//AddForce(MovementForce + DriftForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why
+	//AddTransformVel(MovementForce);
+	AddForce(MovementForce + DriftForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why
 }
 float AKinematicCharacterController::CalculateSpeedMod(const FVector& CurrentVelocity, const FVector& MovementDir)
 {
 	if (!SpeedCurve || !CorneringCurve)
 		return 1.0f;
 
-	return 1.0f;
-
-	/*float VelMag = Magnitude(CurrentVelocity);
+	float VelMag = Magnitude(CurrentVelocity);
 
 	if (!IsGrounded)	// This whole function is what is likely causing most of my issues
 	{
 		return AirSpeed * CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity / VelMag, MovementDir) + 1);
 	}
-	return SpeedCurve->FloatCurve.Eval(VelMag / MaxSpeed) + CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity/VelMag, MovementDir));*/
+	return SpeedCurve->FloatCurve.Eval(VelMag / MaxSpeed) + CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity/VelMag, MovementDir));
 }
 
 void AKinematicCharacterController::JumpLogic()
