@@ -446,7 +446,7 @@ float AKinematicCharacterController::CalculateNormalForce(const FVector& Surface
 FVector AKinematicCharacterController::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
 {
 	// Realized issue with KCC is that more worse surface normal means that gravity is going against both gravity more as well as friction
-	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
+	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(GravityDir, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
 }
 
 FVector AKinematicCharacterController::CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass)
