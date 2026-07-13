@@ -244,8 +244,8 @@ bool AKinematicCharacterController::SteppingCheck(EditableCollideAndSlideData& S
 
 FVector AKinematicCharacterController::SteppingLogic(const EditableCollideAndSlideData& StepInfo, FVector& CurrentDisplacement)
 {
-	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "HasHit Stairs: " + FString::FromInt(StepInfo.StepHit.bBlockingHit && !StepInfo.StepHit.bStartPenetrating));
-	CurrentDisplacement += StepInfo.RemainingVel;
+	if(TransformVelocity.IsNearlyZero())
+		CurrentDisplacement += StepInfo.RemainingVel;
 	return StepInfo.StepHit.Location + GravityNormal * (CapsuleHalfHeight - CapsuleRadius + ConvertToUE5Units(SkinWidth));
 }
 
