@@ -23,7 +23,7 @@ I now have a fairly basic jumping system allowing multiple jumps with Coyote Tim
 
 I now have added Stepping Logic so when meeting a wall smaller than step height it should teleport on top of it if there is available space
 
-Now on all slopes 50 degrees or under there is perfect movement
+Now on all slopes 50 degrees or under there is perfect movement this is done by adding an extra skin width only for the gravity displacement
 
 General Improvements To Make:
 
