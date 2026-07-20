@@ -109,6 +109,7 @@ public:
 	float CoefficientOfRestitution = 0.5f;
 
 	float FrictionCoefficent = 0.7f;
+	float MinFrictionVel = 0.08f;
 
 	float DragCoefficent = 0.4f;
 

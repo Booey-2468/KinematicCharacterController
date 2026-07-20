@@ -425,7 +425,7 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 
 	float VelMag = Magnitude(Velocity);
 
-	if (IsInContact && VelMag > 0.005f)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
+	if (IsInContact && VelMag > MinFrictionVel * FrictionCoefficent)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
 		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
 		FVector FrictionAccel = CalculateFrictionAccel(Velocity, FloorNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
@@ -737,9 +737,8 @@ void AKinematicCharacterController::AddPlayerInputKeys()
 
 void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const float& DeltaTime)
 {
-	//FVector MovementNormal = (IsGrounded) ? FloorNormal : GravityNormal;
+	FVector MovementNormal = (IsGrounded) ? FloorNormal : GravityNormal;
 
-	FVector MovementNormal = GravityNormal;
 	FVector VelocityXZ = ProjectOnNormalizedPlane(Velocity, MovementNormal);
 
 
@@ -774,9 +773,6 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const
 	}
 
 	MovementForce = SafeNormalized(MovementForce);
-
-	if (MovementForce == FVector::ZeroVector)
-		return;
 
 	RotateToMovement(SafeNormalized(ProjectOnNormalizedPlane(MovementForce, GravityNormal)), DeltaTime);	 // Should Rotate player towards movement force
 
