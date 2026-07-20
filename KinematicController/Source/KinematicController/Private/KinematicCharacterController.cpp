@@ -140,8 +140,8 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 
 		float Angle = AngleBetweenVectors(FloorNormal, GravityNormal);	
 
-		if (DotProduct(SnapToSurface, FloorNormal) > 0)
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Bad issue:" + FString::SanitizeFloat(DotProduct(SnapToSurface, FloorNormal)));
+		//if (DotProduct(SnapToSurface, FloorNormal) > 0)
+			//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Bad issue:" + FString::SanitizeFloat(DotProduct(SnapToSurface, FloorNormal)));
 		if (Hit.bStartPenetrating)
 		{
 			SnapToSurface = FloorNormal * (ConvertFromUE5Units(Hit.PenetrationDepth) + SkinWidth);	// Removed Hit distance in case it wasn't set to 0 when penetrating
@@ -150,7 +150,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 		}
 		if (Angle <= MaxSlopeAngle)
 		{
-			if (CollisionData.IsGravity)	// If the check is for gravity this makes sure there is no sliding due to gravity
+			if (CollisionData.IsGravity && !IsSliding)	// If the check is for gravity this makes sure there is no sliding due to gravity
 			{
 				++CurrentBounces;	// Adding an extra bounce as am trying to tell whether the ground has been hit because of it and other than maybe slightly confusing the data it doesn't mess anything up
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
@@ -424,11 +424,11 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 	AddForce(CalculateGravityAccel(GravityNormal, GravityMagnitude), ForceType::Acceleration);
 
 	float VelMag = Magnitude(Velocity);
-
+	// Now scales min friction vel by friction coefficient and uses a larger value to stop jitter
 	if (IsInContact && VelMag > MinFrictionVel * FrictionCoefficent)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
 		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
-		FVector FrictionAccel = CalculateFrictionAccel(Velocity, FloorNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
+		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-SafeNormalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
 		AddForce(FrictionAccel, ForceType::Acceleration);
 	}
@@ -446,7 +446,7 @@ float AKinematicCharacterController::CalculateNormalForce(const FVector& Surface
 FVector AKinematicCharacterController::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
 {
 	// Realized issue with KCC is that more worse surface normal means that gravity is going against both gravity more as well as friction
-	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(GravityDir, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
+	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
 }
 
 FVector AKinematicCharacterController::CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass)
@@ -687,6 +687,7 @@ void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* P
 		UserInput->BindAction(MoveButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::Move);
 		UserInput->BindAction(TurnCamAction, ETriggerEvent::Triggered, this, &AKinematicCharacterController::TurnCam);
 		UserInput->BindAction(JumpButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::JumpInput);
+		UserInput->BindAction(JumpButton, ETriggerEvent::Started, this, &AKinematicCharacterController::JumpPressed);
 	}
 }
 
@@ -724,6 +725,19 @@ void AKinematicCharacterController::JumpInput(const FInputActionValue& InputVal)
 	}
 }
 
+void AKinematicCharacterController::JumpPressed(const FInputActionValue& InputVal)
+{
+	if (InputVal.Get<bool>())
+	{
+		InputKey* Key = InputManager->GetInputKey(EKeys::SpaceBar);
+
+		if (Key)
+			Key->IsPressed = true;
+	}
+
+}
+
+
 void AKinematicCharacterController::AddPlayerInputKeys()
 {
 	int MinimumInputFrames = 1;
@@ -737,8 +751,8 @@ void AKinematicCharacterController::AddPlayerInputKeys()
 
 void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const float& DeltaTime)
 {
-	FVector MovementNormal = (IsGrounded) ? FloorNormal : GravityNormal;
-
+	//FVector MovementNormal = (IsGrounded) ? FloorNormal : GravityNormal;	// This is good for transform but worse for physics based as some movement is removed when seperated into plane and gravity normal
+	FVector MovementNormal = GravityNormal;
 	FVector VelocityXZ = ProjectOnNormalizedPlane(Velocity, MovementNormal);
 
 
@@ -753,21 +767,21 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const
 	
 	InputKey* Key;
 
-	if ((Key = InputManager->GetInputKey(EKeys::W)) && Key->HasBeenPressed)	// Tidied up so that GetInput Key isn't called twice
+	if ((Key = InputManager->GetInputKey(EKeys::W)) && Key->IsDown)	// Tidied up so that GetInput Key isn't called twice
 	{
 		MovementForce += TransformForwardXZ;
 	}
-	if ((Key = InputManager->GetInputKey(EKeys::S)) && Key->HasBeenPressed)
+	if ((Key = InputManager->GetInputKey(EKeys::S)) && Key->IsDown)
 	{
 		MovementForce -= TransformForwardXZ;
 
 	}
-	if ((Key = InputManager->GetInputKey(EKeys::A)) && Key->HasBeenPressed)
+	if ((Key = InputManager->GetInputKey(EKeys::A)) && Key->IsDown)
 	{
 		MovementForce -= TransformRightXZ;
 
 	}
-	if ((Key = InputManager->GetInputKey(EKeys::D)) && Key->HasBeenPressed)
+	if ((Key = InputManager->GetInputKey(EKeys::D)) && Key->IsDown)
 	{
 		MovementForce += TransformRightXZ;
 	}
@@ -816,13 +830,13 @@ void AKinematicCharacterController::JumpLogic()
 		HasFallen = false;
 	}
 
-	bool CanJump = Key->HasBeenPressed || (JumpBufferTimer > 0.0f && IsGrounded) || (!IsGrounded && CoyoteTimer > 0.0f && Key->HasBeenPressed);
+	bool CanJump = Key->IsPressed || (JumpBufferTimer > 0.0f && IsGrounded) || (!IsGrounded && CoyoteTimer > 0.0f && Key->IsPressed);
 
 	CanJump = CanJump && CurrentJumpCount < MaxJumpCount && (CurrentJumpCount < 1 || JumpTimer > MinJumpTime);	// Aded min Jump time check so that double jumps have a min jump time
 
 	float UpwardVel = DotProduct(Velocity, GravityNormal);
 
-	bool ShouldFall = JumpTimer > MinJumpTime && !Key->HasBeenPressed && !IsGrounded && !HasFallen && UpwardVel >= 0.0f;
+	bool ShouldFall = JumpTimer > MinJumpTime && !Key->IsDown && !IsGrounded && !HasFallen && UpwardVel >= 0.0f;
 
 	if (CanJump)
 	{
@@ -852,7 +866,7 @@ void AKinematicCharacterController::JumpTimerLogic(const float& DeltaTime)
 		CoyoteTimer -= DeltaTime;
 	}
 	
-	if(InputManager->GetInputKey(EKeys::SpaceBar)->HasBeenPressed && !IsGrounded)
+	if(InputManager->GetInputKey(EKeys::SpaceBar)->IsDown && !IsGrounded)
 	{
 		JumpBufferTimer = JumpBufferTime;
 	}

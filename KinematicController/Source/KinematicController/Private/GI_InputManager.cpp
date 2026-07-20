@@ -55,7 +55,8 @@ void UGI_InputManager::TempResetKey(const FKey& KeyToReset)
 		if (InputKeys[i]->Key == KeyToReset)
 		{
 			InputKeys[i]->FrameCount = 0;
-			InputKeys[i]->HasBeenPressed = false;
+			InputKeys[i]->IsDown = false;
+			InputKeys[i]->IsPressed = false;
 			return;
 		}
 	}
@@ -82,9 +83,9 @@ void UGI_InputManager::UpdateKeyData(const FKey& KeyToUpdate, float DeltaTime)
 	if (Key)
 	{
 		++Key->FrameCount;
-		if (Key->FrameCount >= Key->MinFrames && !Key->HasBeenPressed)
+		if (Key->FrameCount >= Key->MinFrames && !Key->IsDown)
 		{
-			Key->HasBeenPressed = true;
+			Key->IsDown = true;
 		}
 		if(DeltaTime > 0.0f)
 			Key->HeldTime += DeltaTime;

@@ -109,7 +109,7 @@ public:
 	float CoefficientOfRestitution = 0.5f;
 
 	float FrictionCoefficent = 0.7f;
-	float MinFrictionVel = 0.08f;
+	float MinFrictionVel = 0.2f;
 
 	float DragCoefficent = 0.4f;
 
@@ -172,7 +172,7 @@ public:
 
 	bool IsGrounded = false;
 
-	
+	bool IsSliding = false;
 
 	bool IsInContact = false;
 
@@ -441,6 +441,7 @@ public:
 	void Move(const FInputActionValue& InputVal);
 	void TurnCam(const FInputActionValue& InputVal);
 	void JumpInput(const FInputActionValue& InputVal);
+	void JumpPressed(const FInputActionValue& InputVal);
 
 
 	void AddPlayerInputKeys();

@@ -11,10 +11,11 @@
 
 struct InputKey
 {
-	float HeldTime = 0;
+	float HeldTime = 0.0f;
 	int FrameCount = 0;
 	int MinFrames = 0;
-	bool HasBeenPressed = false;
+	bool IsDown = false;
+	bool IsPressed = false;
 	FKey Key = FKey();	// Needed to use value as ue5 FKey values are const meaning you can't really reference them
 };
 UCLASS()
