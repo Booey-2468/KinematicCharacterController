@@ -13,8 +13,6 @@ AKinematicCharacterController::AKinematicCharacterController()
 	RootComponent = CreateDefaultSubobject<UCapsuleComponent>("Character Collider");
 	Collider = Cast<UCapsuleComponent>(RootComponent);
 
-	CapsuleRadius -= ConvertToUE5Units(SkinWidth) * 2;	// Converts To UE5 units as this is meant in meters and is applied as such
-
 	Collider->SetCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
 	Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Collider->SetCollisionProfileName(TEXT("CustomKinematicCollision"));
@@ -95,8 +93,10 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	Params.AddIgnoredActor(this);
 	Params.bTraceComplex = true;
 	Params.TraceTag = GetWorld()->DebugDrawTraceTag;
-	
-	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CollisionData.CurrentPos), ConvertToUE5Units(CollisionData.CurrentPos + (dist * SafeNormalized(CollisionData.CurrentVel))), GetActorQuat(), ECC_WorldStatic, Collider->GetCollisionShape(), Params);
+
+	FCollisionShape ShapeBounds = FCollisionShape::MakeCapsule(CapsuleRadius - ConvertToUE5Units(SkinWidth), CapsuleHalfHeight - ConvertToUE5Units(SkinWidth));
+
+	bool HasHit = GetWorld()->SweepSingleByChannel(Hit, ConvertToUE5Units(CollisionData.CurrentPos), ConvertToUE5Units(CollisionData.CurrentPos + (dist * SafeNormalized(CollisionData.CurrentVel))), GetActorQuat(), ECC_WorldStatic, ShapeBounds, Params);
 
 	if (HasHit || Hit.bStartPenetrating)
 	{
@@ -148,6 +148,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 			LeftoverVelocity = CollisionData.CurrentVel;
 			SteppingInfo.CorrectionVel += SnapToSurface;
 		}
+
 		if (Angle <= MaxSlopeAngle)
 		{
 			if (CollisionData.IsGravity && !IsSliding)	// If the check is for gravity this makes sure there is no sliding due to gravity
@@ -188,7 +189,14 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 				else
 				{
 					LeftoverVelocity = ProjectAndScaleNormalized(LeftoverVelocity, FloorNormal) * Scale;
-				}		
+				}
+
+				if (Hit.Component->IsSimulatingPhysics())	// Added some code so that when hitting a wall that is considered a physics object it should add the appropriate impulse
+				{
+					float Impulse;
+					CalculateBounceImpulse(Hit.Component->GetComponentVelocity() + ConvertToUE5Units(Velocity), Hit.Component->GetMass() + Mass, FloorNormal, Impulse);
+					Hit.Component->AddImpulseAtLocation(TotalImpulse * -FloorNormal, Hit.ImpactPoint);
+				}
 			}
 			else
 			{
@@ -373,7 +381,6 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 
 	NewPosition = (StepInfo.StepHit.bBlockingHit) ? SteppingLogic(StepInfo, MovementDisplacement) : NewPosition;
 
-
 	int BouncesOnGround = TotalBounces;
 
 	CollisionInfo = ConstantCollideAndSlideData(GravityDisplacement, ConvertFromUE5Units(NewPosition), GravityDisplacement, true);
@@ -424,29 +431,33 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 	AddForce(CalculateGravityAccel(GravityNormal, GravityMagnitude), ForceType::Acceleration);
 
 	float VelMag = Magnitude(Velocity);
-	// Now scales min friction vel by friction coefficient and uses a larger value to stop jitter
-	if (IsInContact && VelMag > MinFrictionVel * FrictionCoefficent)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
-	{
-		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
-		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, GravityNormal, GravityMagnitude, Mass, InvMass, FrictionCoefficent);
-		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-SafeNormalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
-		AddForce(FrictionAccel, ForceType::Acceleration);
-	}
+
 	if(IsGrounded)
 		AddForce(CalculateDragAccel(Velocity, GroundDragCoefficient, InvMass), ForceType::Acceleration);
 	else
 		AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
+
+	// Now scales min friction vel by friction coefficient and uses a larger value to stop jitter
+	if (IsInContact && VelMag > MinFrictionVel * FrictionCoefficent)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
+	{
+		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
+		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, Acceleration, Mass, InvMass, FrictionCoefficent);
+		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-SafeNormalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
+		AddForce(FrictionAccel, ForceType::Acceleration);
+	}
 }
 
-float AKinematicCharacterController::CalculateNormalForce(const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& FrictionCoeff)
+float AKinematicCharacterController::CalculateNormalForce(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& FrictionCoeff)
 {
-	return DotProduct(SurfaceNormal, GravityDir) * ObjMass * FMath::Abs(GravityMag) * FrictionCoeff;
+	// Changed normal force to be more accurate so any forces moving into the surface are included in normal force calc but normal force can't be negative so I check that it isn't and invert the surface normal for the dot product
+	float AccelInSurface = DotProduct(CurrentAccel, -SurfaceNormal);	
+	return (AccelInSurface < 0.0f) ? 0.0f : AccelInSurface * ObjMass * FrictionCoeff;
 }
 
-FVector AKinematicCharacterController::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
+FVector AKinematicCharacterController::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
 {
 	// Realized issue with KCC is that more worse surface normal means that gravity is going against both gravity more as well as friction
-	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, GravityDir, GravityMag, ObjMass, FrictionCoeff) * InvertedMass;
+	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, CurrentAccel, ObjMass, FrictionCoeff) * InvertedMass;
 }
 
 FVector AKinematicCharacterController::CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass)
@@ -596,17 +607,17 @@ void AKinematicCharacterController::CalculateEulerPosition(FVector& NewPosition,
 	NewPosition += NewVelocity * DeltaTime;
 }
 
-void AKinematicCharacterController::CalculateVelocityVerletPosition(FVector& NewPosition, FVector& NewVelocity, const float& DeltaTime)
+void AKinematicCharacterController::CalculateVelocityVerletPosition(FVector& NewDisplacement, FVector& NewVelocity, const float& DeltaTime)
 {
 	// Should technically use previous acceleration but might use acceleration to keep responsiveness
-	NewPosition += NewVelocity * DeltaTime + 0.5f * PreviousAcceleration * DeltaTime * DeltaTime;
+	NewDisplacement += NewVelocity * DeltaTime + 0.5f * PreviousAcceleration * Square(DeltaTime);
 	NewVelocity += 0.5f * (PreviousAcceleration + Acceleration) * DeltaTime;	// Needs to be done afterwards as Acceleration is seperately accounted for via velocity verlet equation
 }
 
 void AKinematicCharacterController::CalculateVerletPosition(const FVector& PrevPos, FVector& NewPos, FVector& NewVelocity, const float& DeltaTime)
 {
 	FVector CurrentLocation = NewPos;
-	NewPos = 2 * CurrentLocation - PrevPos + Acceleration * DeltaTime * DeltaTime;
+	NewPos = 2 * CurrentLocation - PrevPos + Acceleration * Square(DeltaTime);	// Multiplied by 2 to get location but am now getting displacement instead
 	NewVelocity = (NewPos - CurrentLocation)/DeltaTime;	// Using Forward difference as setting future velocity and don't need to get a larger average
 	// Symmetric Velocity Estimation would go over both timesteps as in previous -> current -> future and estimate based on that with double the deltatime
 }
@@ -642,7 +653,7 @@ void AKinematicCharacterController::CalculateRK4Position(FVector& NewPosition, F
 	k4.PositionDerivative = yVel;
 	CalculateRK4Acceleration(yPos, yVel, k4.VelocityDerivative);
 	
-	NewPosition = NewPosition + (k1.PositionDerivative + 2 * k2.PositionDerivative + 2 * k3.PositionDerivative + k4.PositionDerivative) * (DeltaTime/6.0f);
+	NewPosition += (k1.PositionDerivative + 2 * k2.PositionDerivative + 2 * k3.PositionDerivative + k4.PositionDerivative) * (DeltaTime/6.0f);
 
 	NewVelocity += (k1.VelocityDerivative + 2 * k2.VelocityDerivative + 2 * k3.VelocityDerivative + k4.VelocityDerivative) * (DeltaTime/6.0f);
 }
@@ -686,8 +697,8 @@ void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* P
 	{
 		UserInput->BindAction(MoveButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::Move);
 		UserInput->BindAction(TurnCamAction, ETriggerEvent::Triggered, this, &AKinematicCharacterController::TurnCam);
-		UserInput->BindAction(JumpButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::JumpInput);
 		UserInput->BindAction(JumpButton, ETriggerEvent::Started, this, &AKinematicCharacterController::JumpPressed);
+		UserInput->BindAction(JumpButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::JumpInput);
 	}
 }
 
@@ -734,7 +745,6 @@ void AKinematicCharacterController::JumpPressed(const FInputActionValue& InputVa
 		if (Key)
 			Key->IsPressed = true;
 	}
-
 }
 
 
@@ -755,10 +765,8 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const
 	FVector MovementNormal = GravityNormal;
 	FVector VelocityXZ = ProjectOnNormalizedPlane(Velocity, MovementNormal);
 
-
 	if (Magnitude(VelocityXZ) > MaxSpeed)
 		return;
-
 
 	FVector MovementForce = FVector::ZeroVector;
 	FVector TransformForwardXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorForwardVector(), MovementNormal));
@@ -788,6 +796,9 @@ void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const
 
 	MovementForce = SafeNormalized(MovementForce);
 
+	if (MovementForce.IsNearlyZero())
+		return;
+
 	RotateToMovement(SafeNormalized(ProjectOnNormalizedPlane(MovementForce, GravityNormal)), DeltaTime);	 // Should Rotate player towards movement force
 
 	FVector DriftForce = -ProjectOnNormalizedPlane(VelocityXZ, MovementForce) * CorneringStiffness;
@@ -811,9 +822,9 @@ float AKinematicCharacterController::CalculateSpeedMod(const FVector& CurrentVel
 
 	if (!IsGrounded)	// This whole function is what is likely causing most of my issues
 	{
-		return AirSpeed * CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity / VelMag, MovementDir) + 1);
+		return AirSpeed * CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity / VelMag, MovementDir));
 	}
-	return SpeedCurve->FloatCurve.Eval(VelMag / MaxSpeed) + CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity/VelMag, MovementDir));
+	return SpeedCurve->FloatCurve.Eval(VelMag / MaxSpeed) * CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity/VelMag, MovementDir));
 }
 
 void AKinematicCharacterController::JumpLogic()
@@ -830,9 +841,9 @@ void AKinematicCharacterController::JumpLogic()
 		HasFallen = false;
 	}
 
-	bool CanJump = Key->IsPressed || (JumpBufferTimer > 0.0f && IsGrounded) || (!IsGrounded && CoyoteTimer > 0.0f && Key->IsPressed);
+	bool CanJump = Key->IsDown || (JumpBufferTimer > 0.0f && IsGrounded) || (!IsGrounded && CoyoteTimer > 0.0f && Key->IsDown);
 
-	CanJump = CanJump && CurrentJumpCount < MaxJumpCount && (CurrentJumpCount < 1 || JumpTimer > MinJumpTime);	// Aded min Jump time check so that double jumps have a min jump time
+	CanJump = CanJump && CurrentJumpCount < MaxJumpCount && (CurrentJumpCount < 1 || (JumpTimer > MinJumpTime && Key->IsPressed));	// Aded min Jump time check so that double jumps have a min jump time
 
 	float UpwardVel = DotProduct(Velocity, GravityNormal);
 

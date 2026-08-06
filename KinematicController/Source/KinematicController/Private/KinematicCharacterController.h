@@ -91,27 +91,27 @@ public:
 
 #pragma region Physics Calc And Application
 
-	FVector Acceleration = FVector::ZeroVector;
-	FVector PreviousAcceleration = FVector::ZeroVector;
+	FVector Acceleration = FVector::ZeroVector;		// This stores and accumulates accelertion until the end of the timestep where it is all then converted into velocity and position changes and this is then reset as the acceleration is not likely to be constant
 
-	FVector PreviousPosition = FVector::ZeroVector;
-	FVector Velocity = FVector::ZeroVector;
-	FVector TransformVelocity = FVector::ZeroVector;
-	FVector TotalImpulse = FVector::ZeroVector;
+	FVector PreviousAcceleration = FVector::ZeroVector;	// This stores the previous/current (depending on if you see the time step being acted in as the future or the current) timesteps acceleration and this is stores the current/future time steps acceleraion at the end of it. This is needed for certain time integrations that use previous acceleration for accuracy such as verlet and velocity verlet
+	FVector PreviousPosition = FVector::ZeroVector;	// This stores the previous position of the player for time integration methods such as verlet
 
-	FVector GravityNormal = FVector::UpVector;
+	FVector Velocity = FVector::ZeroVector;		// This stores and retains velocity this is applied during time integration but if interrupted via collisions then this is redefined by adding both displacements together and multiplying by inverse delta time
+	FVector TransformVelocity = FVector::ZeroVector;	// This stores Transform Velocity which is essentially an acceleration that you don't want retained over time so it is a one time acceleration allowing for a simple transform based mpvement instead of physics based movement
+	FVector TotalImpulse = FVector::ZeroVector;		// This stores the total impulse which is then added and multiplied by InvMass to velocity at the beginning of Apply Velocity this is mostly for unexpected collisions
 
-	float GravityMagnitude = -9.81f;
+	FVector GravityNormal = FVector::UpVector;		// This is the gravity normal and is being used as a normal as it makes comparisons to it a lot easier such as for friction
+	float GravityMagnitude = -9.81f;	// This is the gravity's magnitude and directly effects Normal force and hence friction
 
-	float Mass = 70.0f;
-	float InvMass = 1.0f;
+	float Mass = 70.0f;		// This represents the mass of the collider and is used for force, momentum and normal force calculations among others
+	float InvMass = 1.0f;	// This is used to store the inverse Mass which increases efficiency as division is done once and then all further operations are multiplication which is less CPU heavy
 
-	float CoefficientOfRestitution = 0.5f;
+	float CoefficientOfRestitution = 0.5f;	// This is the ratio of kinetic enegy that would be lost during a bounce
 
-	float FrictionCoefficent = 0.7f;
-	float MinFrictionVel = 0.2f;
+	float FrictionCoefficent = 0.7f;	// This is the friction coefficient this decides how much friction the KCC has and how hard it is to get moving
+	float MinFrictionVel = 0.05f;	// This is the minimum velocity magnitude necessary for friction to act so it doesn't add more than the actual  velocity and set it in a constant state of vibration at rest
 
-	float DragCoefficent = 0.4f;
+	float DragCoefficent = 0.4f;	// This is the drag coefficient and reduces velocity by a fraction of itself this happens due to air resistance or other forms of drag
 
 	/// <summary>
 	/// This handles all the resulting physics, movement and collision handling as well as stepping
@@ -127,20 +127,66 @@ public:
 	/// <param name="TypeOfForce"> Checks whether the user wants the force to be an impulse or not</param>
 	void AddForce(const FVector& AddedForce, const ForceType& TypeOfForce);
 
+	/// <summary>
+	/// This essentially just adds the vector to transform vel which is then multiplied by deltatime to distribute the movement evenly
+	/// </summary>
+	/// <param name="AddedTransform"> Added to TransformVel to be used in transform based movement </param>
 	void AddTransformVel(const FVector& AddedTransform);
 
+	/// <summary>
+	/// This essentially applies all the linear physics forces as rotational physics isn't needing considered
+	/// </summary>
 	void CalculatePhysicsForces();
 
-	float CalculateNormalForce(const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& FrictionCoeff);
-
+	/// <summary>
+	/// This calculates normal force which can be used for many things but in this case mainly for friction
+	/// </summary>
+	/// <param name="SurfaceNormal"> This is the surface normal that the force is applied from and decides what fraction of it is applied to oppose gravity </param>
+	/// <param name="CurrentAccel"> This is the current Acceleration and is used to see how much acceleration is pushing against the surface that is in contact </param>
+	/// <param name="ObjMass"> This is the Mass of the object that presses against the ground </param>
+	/// <param name="FrictionCoeff"> This is the Coefficient of friction between the capsule and the ground </param>
+	/// <returns> This returns the amount of normal force that resists gravity </returns>
+	float CalculateNormalForce(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& FrictionCoeff);
 	// Made the following 3 functions for RK4 integration and for when acceleration needs computing won't use in this project except maybe to make things looka bit cleaner
 	
-	FVector CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& GravityDir, const float& GravityMag, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff);
+	/// <summary>
+	/// This Projects and normalizes the velocity onto the surface normal and of that velocity the normal force is calculated and mutliplied by that direction
+	/// Calculates Friction for RK4 Acceleration calculations
+	/// </summary>
+	/// <param name="Vel"> This is the velocity that determines the direction of the friction</param>
+	/// <param name="SurfaceNormal"> This is the Surface Normal that the friction moves along and scales friction lower the more inline with gravity</param>
+	/// <param name="CurrentAccel"> This is the current Acceleration and is used to see how much acceleration is pushing against the surface that is in contact </param>
+	/// <param name="ObjMass"> This is the mass of the object used for converting the normal force to a force</param>
+	/// <param name="InvertedMass"> This is the inverted Mass which is used for turning the normal force into an acceleration</param>
+	/// <param name="FrictionCoeff"> This is the coefficient of friction the KCC has</param>
+	/// <returns> The acceleration vector of friction</returns>
+	FVector CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff);
 
+	/// <summary>
+	/// This calculates the drag for the KCC
+	/// Calculates drag for RK4 Acceleration calculations
+	/// </summary>
+	/// <param name="Vel"> This is used for the base of the drag </param>
+	/// <param name="DragCoeff"> This is the drag coefficient use to determine what percentage of velocity is enacted as an opposing acceleration </param>
+	/// <param name="InvertedMass"> This converts the drag force into an acceleration</param>
+	/// <returns></returns>
 	FVector CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass);
 
+	/// <summary>
+	/// A simple gravity calculation for the KCC
+	/// Calculates Gravity for RK4 Acceleration calculations
+	/// </summary>
+	/// <param name="GravityDir"> The direction of Gravity </param>
+	/// <param name="GravityMag"> The Magnitude of Gravity </param>
+	/// <returns> Gravity Acceleration </returns>
 	FVector CalculateGravityAccel(const FVector& GravityDir, const float& GravityMag);
 
+	/// <summary>
+	/// Calculates the momentum of an object was previously in use for Impulse calculations but has now more been merged in impulse equation
+	/// </summary>
+	/// <param name="ObjVelocity"> The velocity the object is moving</param>
+	/// <param name="ObjMass"> The mass of the object</param>
+	/// <param name="ObjMomentum"> The momentum variable to be set</param>
 	inline void CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum);
 
 	/// <summary>
@@ -155,40 +201,71 @@ public:
 #pragma endregion
 
 #pragma region Collision Detection And Response
+		
+	FVector FloorNormal = FVector::UpVector;	// The floor normal allows things like friction to tell how much should be used and to tell if the player is on a slope
 
-	FVector FloorNormal = FVector::UpVector;
+	float MaxSlopeAngle = 80.0f;	// The maximum slope angle where the slope is still treated like a floor instead of a slope
 
-	float MaxSlopeAngle = 80.0f;
+	float MinSlopeSimilarity = 0.7f;	// The Impact Normal hasn't always been accurate so this makes sure that both normals are semi similar
 
-	float MinSlopeSimilarity = 0.8f;
+	float MaxStepHeight = 1.0f;	// This is the max stepping height in meters
 
-	float MaxStepHeight = 1.0f;
+	float MinStepDist = 0.2f;	// This is the minimum amount the capsule must be moved into the blocking surface so that the capsule doesn't immediately slide off the edge of the step
 
-	float MinStepDist = 0.2f;
+	float GroundingCheck = 0.08f;	// This is added so that for gravity movement you get an extra skin width to avoid bumps that for some reasons occur on higher slopes
 
-	float GroundingCheck = 0.05f;
+	int MaxBounces = 6;	// The maximum amount of bounces the Collide and Slide Algorithm can do before returning a zero vector this prevents infinite recursion
 
-	int MaxBounces = 10;
+	bool IsGrounded = false;	// The boolean that shows if the player is grounded this is based off of the direction of the vertical movement and if there was a bounce in the collision
 
-	bool IsGrounded = false;
+	bool IsSliding = false;	// This if true allows the player to slip off slopes utilizing gravity instead of cutting it off so you dn't always fall down slopes
 
-	bool IsSliding = false;
+	bool IsInContact = false;	// The boolean that says if there was any contact during collision and if friction should be applied
 
-	bool IsInContact = false;
+	UCapsuleComponent* Collider;	// The capsule Collider that stops unexpected collisions from phasing through
 
-	UCapsuleComponent* Collider;
-
-	float CapsuleHalfHeight = 90.0f;
+	float CapsuleHalfHeight = 90.0f;	// The Capsule half height and radius in cm instead of meters
 	float CapsuleRadius = 30.0f;
 
-	float SkinWidth = 0.02f;
+	float SkinWidth = 0.02f;	// The skin width of the capsule collider in meters this is used heavily in the collision to make sure the collider never intersects with any of its environment
 
+	/// <summary>
+	/// This is the whole collision solution for the KCC it uses the collide and slide algorithm which slides the displacement projected onto the surface normal's plane
+	/// There is currently a slight issue with bumps don't know why but it causes issues on higher slopes and moving against walls is speeding up the KCC too much.
+	/// </summary>
+	/// <param name="CurrentBounces"> This counts the current amount of bounces so the function knows when it should stop recursion and is used for grounding and contact logic.</param>
+	/// <param name="CollisionData"> This is all the Essential data for the Collide and Slide function and is only changed when recursed. </param>
+	/// <param name="SteppingInfo"> This is less essential but is used for stepping and correction vel which avoids some of the bouncing by removing it from velocity later on. </param>
+	/// <returns> This returns the sum of all the snap to surface displacements along with the remaining vel that did not hit anything after being projected. </returns>
 	FVector CollideAndSlideCollision(int& CurrentBounces, const ConstantCollideAndSlideData& CollisionData , EditableCollideAndSlideData& SteppingInfo);
 
+	/// <summary>
+	/// This is the check used in the Collide and Slide Collision to when hitting walls using a sphere cast to check if it could be steppable or not.
+	/// If there is enough distance for the capsule to fit it is then allowed and changed later
+	/// </summary>
+	/// <param name="SteppingInfo">This stores all the recieved information from the check if successful </param>
+	/// <param name="Hit"> This stores the hit information such as mainly location to allow the </param>
+	/// <param name="LeftoverVel"> This is the leftover velocity after the hit to make sure movement is not lost</param>
+	/// <returns> This returns whether or not the step would be possible or not and if it is snap to surface is immediately returned in the Collision function. </returns>
 	bool SteppingCheck(EditableCollideAndSlideData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel);
 
+	/// <summary>
+	/// This essentially just returns the new position with added leftover vel at the swept last valid location
+	/// </summary>
+	/// <param name="StepInfo"> This carries stepping information that is vital to getting the valid location and retaining velocity </param>
+	/// <param name="CurrentDisplacement"> This allows changes to the displacement after it has been added to new position to retain velocity as the sweep already contains that displacement</param>
+	/// <returns> Returns the valid location for stepping in UE5 units</returns>
 	FVector SteppingLogic(const EditableCollideAndSlideData& StepInfo, FVector& CurrentDisplacement);
 
+	/// <summary>
+	/// This handles unexpected collisions such as with moving physics objects by checking for any penetration and moving out of it and otherwise just 
+	/// applying a normal impulse to both the player and object if it is affected by physics
+	/// </summary>
+	/// <param name="HitComp"> This is the component that was hit during the collision which is obviously the collider </param>
+	/// <param name="OtherActor"> This is the actor that was hit and is useful to check what class of actor was hit</param>
+	/// <param name="OtherComp"> This is the component that was unexpectedly hit and is neccesary to see if an impulse can be applied to it </param>
+	/// <param name="NormalImpulse"> This is Normal Impulse that would be applied to the other object normally</param>
+	/// <param name="Hit"> This is the hit info and canpossibly show if it is penetrating and whether or not to do a penetration test </param>
 	UFUNCTION()
 	void OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 	 
@@ -231,11 +308,24 @@ public:
 
 
 
-	
+	/// <summary>
+	/// This is just squaring code and can make some code such as the dot product more clean and readable
+	/// </summary>
+	/// <param name="NumberToSquare"> This is the number that needs multiplying by itself </param>
+	/// <returns> The squared number</returns>
 	inline float Square(const float& NumberToSquare);
+	/// <summary>
+	/// This is to the Power of code that uses a for loop to multiply numbers
+	/// </summary>
+	/// <param name="MultNum"> Number to be multiplied by itself many a time</param>
+	/// <param name="Power"> Number that determines how many times MultNum is multiplied by itself</param>
+	/// <returns> The Number to the power of Power</returns>
 	inline float Power(const float& MultNum, const int& Power);
+
+
 	float Sqrt(const float& SqrtNum);
-	float InvSqrt(const float& SqrtNum);
+	float InvSqrt(const float& SqrtNum);	// This was code that I wanted to create but realised CPU sqr rooting is much faster than one I create with code
+
 	/// <summary>
 	/// Used to convert meters to centimeters as I prefer to use meters and its more common in physics overall
 	/// Needed when interacting with any UE5 systems such as shape sweeps and setting actor location
@@ -296,23 +386,34 @@ public:
 	/// <returns> Returns the projected vector</returns>
 	inline FVector ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector);
 
+	/// <summary>
+	/// Projects the first vector onto the normal using dot product which is more efficient than the other version
+	/// </summary>
+	/// <param name="VectorToProject"> This is the vector to be projected onto the normal </param>
+	/// <param name="ProjectionNormal"> This is the projection normal and must have a length of approx 1 or it will not give an accurate result</param>
+	/// <returns> Returns the projected vector</returns>
 	inline FVector ProjectOnNormal(const FVector& VectorToProject, const FVector& ProjectionNormal);
 	/// <summary>
 	/// Removes the Projection of Full vector on plane normal to get the vector part parallel to the normal
 	/// </summary>
-	/// <param name="FullVector"></param>
-	/// <param name="PlaneNormal"></param>
-	/// <returns></returns>
+	/// <param name="FullVector"> This is the vector that is projected onto the plane </param>
+	/// <param name="PlaneNormal"> This is the Vector that takes what is perpendicular to the plane</param>
+	/// <returns> Returns the vector projected along the specified plane</returns>
 	inline FVector ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal);
 
 	/// <summary>
 	/// Removes the Projection of Full vector on plane normal to get the vector part parallel to the normal
 	/// </summary>
-	/// <param name="FullVector"></param>
-	/// <param name="PlaneNormal"></param>
-	/// <returns></returns>
+	/// <param name="FullVector"> This is the vector that is projected onto the plane </param>
+	/// <param name="PlaneNormal"> This is the Vector that takes what is perpendicular to the plane
+	/// This must have an approx length of 1 as it saves efficiency by just using the dot product once with the normal</param>
+	/// <returns> Returns the vector projected along the specified plane</returns>
 	inline FVector ProjectOnNormalizedPlane(const FVector& FullVector, const FVector& PlaneNormal);
 
+	/// <summary>
+	/// Gets the total angle between 2 vectors
+	/// </summary>
+	/// <returns> The angle between the vectors </returns>
 	inline float AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2);
 
 	/// <summary>
@@ -384,7 +485,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	UInputMappingContext* DefaultMappingContext;
 
-	float MoveSpeed = 4.0f;
+	float MoveSpeed = 8.0f;	// Movement might be slightly slow but might be best to increase later
 
 	float MaxSpeed = 6.0f;
 
