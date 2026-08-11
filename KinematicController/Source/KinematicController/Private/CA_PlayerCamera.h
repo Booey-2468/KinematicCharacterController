@@ -13,7 +13,8 @@ UCLASS()
 class ACA_PlayerCamera : public ACameraActor
 {
 	GENERATED_BODY()
-	
+
+private:
 	ACA_PlayerCamera();
 
 	float CameraMaxDist = 1000.0f;
@@ -21,19 +22,16 @@ class ACA_PlayerCamera : public ACameraActor
 
 	float MouseSensitivity = 300.0f;
 
+	// Added if checks so that if this is 0 or under it goes back to no lerp functiionality
 	float LerpMaxDuration = 0.05f;	// Remove the Lerp functionality for the most smoothness but means can be more snappy to sudden changes
 	float CurrentDeltaTime = 0.0f;	// The lerping can seem slightly jittery but gives a nice delayed effect
 									// Added Lerping to Pitch and Yaw this defintitely helped with jitter though this whole system has the flaw that it can coincide with other collisions as its lerping
-	void MoveCamera(const float& DeltaTime);
+	virtual void MoveCamera(const float& DeltaTime);
 	
 	virtual void BeginPlay() override;
 public:
 	virtual void Tick(float DeltaTime) override;
 	AActor* FocusedActor = nullptr;
 	FVector2D CameraMovementAxis = FVector2d::ZeroVector;
-
-
-
-
 
 };

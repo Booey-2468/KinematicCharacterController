@@ -6,7 +6,7 @@
 AKinematicControllerGameMode::AKinematicControllerGameMode()
 {
 	// set default pawn class to My Kinematic Character Controller found by a file path from game source
-	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnBPClass(TEXT("/Game/KinematicController/BP_KinematicCharacterController"));
+	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnBPClass(TEXT("/Game/KinematicController/BP_KCCPlayerCharacter"));
 	if (PlayerPawnBPClass.Class != NULL)
 	{
 		DefaultPawnClass = PlayerPawnBPClass.Class;

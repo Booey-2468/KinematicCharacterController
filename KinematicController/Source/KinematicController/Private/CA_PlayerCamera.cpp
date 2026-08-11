@@ -24,9 +24,11 @@ void ACA_PlayerCamera::MoveCamera(const float& DeltaTime)
 		float PitchRot = (CameraMovementAxis.Y * MouseSensitivity * DeltaTime) + NewRotation.Y;
 		float YawRot = (CameraMovementAxis.X * MouseSensitivity * DeltaTime) + NewRotation.Z;
 
-		PitchRot = FMath::Lerp(NewRotation.Y, PitchRot, CurrentDeltaTime / LerpMaxDuration);
-		YawRot = FMath::Lerp(NewRotation.Z, YawRot, CurrentDeltaTime / LerpMaxDuration);
-
+		if (LerpMaxDuration > 0)
+		{
+			PitchRot = FMath::Lerp(NewRotation.Y, PitchRot, CurrentDeltaTime / LerpMaxDuration);
+			YawRot = FMath::Lerp(NewRotation.Z, YawRot, CurrentDeltaTime / LerpMaxDuration);
+		}
 		NewRotation = FVector(NewRotation.X, FMath::Clamp(PitchRot, -89.91f, 89.91f) , YawRot);	// Clamp cannot be above 89.91 to prevent gimbal locking as this prevents any yaw input working propely while in this state
 
 		SetActorRotation(FRotator::MakeFromEuler(NewRotation));	// Don't use .Rotation for this as that doesn't handle euler only direction vectors
@@ -35,7 +37,7 @@ void ACA_PlayerCamera::MoveCamera(const float& DeltaTime)
 	FVector CameraMovement = -GetActorForwardVector() * CameraMaxDist;
 	
 	FHitResult Hit;
-	FCollisionShape CameraBounds = FCollisionShape::MakeSphere(10.0f);
+	FCollisionShape CameraBounds = FCollisionShape::MakeSphere(10.0f);	// Just used a random value suprisingly worked
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(FocusedActor);
 
@@ -45,8 +47,11 @@ void ACA_PlayerCamera::MoveCamera(const float& DeltaTime)
 		CameraMovement = -GetActorForwardVector() * Hit.Distance;
 	else if(Hit.bBlockingHit)
 		CameraMovement = -GetActorForwardVector() * CameraMinDist;
+	if (LerpMaxDuration > 0)
+		CurrentLocation = FMath::Lerp(GetActorLocation(), CurrentLocation + CameraMovement, CurrentDeltaTime / LerpMaxDuration);
+	else
+		CurrentLocation += CameraMovement;
 
-	CurrentLocation = FMath::Lerp(GetActorLocation(), CurrentLocation + CameraMovement, CurrentDeltaTime/LerpMaxDuration);
 	SetActorLocation(CurrentLocation);
 
 	if(CameraMovementAxis != FVector2d::ZeroVector)

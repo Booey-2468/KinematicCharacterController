@@ -1,10 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "KinematicCharacterController.h"
+#include "KCCPhysics.h"
 
 // Sets default values
-AKinematicCharacterController::AKinematicCharacterController()
+AKCCPhysics::AKCCPhysics()
 {
  	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
@@ -19,54 +19,27 @@ AKinematicCharacterController::AKinematicCharacterController()
 	Collider->SetGenerateOverlapEvents(true);
 	Collider->SetNotifyRigidBodyCollision(true);
 	Collider->SetMaxDepenetrationVelocity(NAME_None, 0.0f);
-
-	Skeleton = CreateDefaultSubobject<USkeletalMeshComponent>("Character Mesh");
-	Skeleton->SetupAttachment(RootComponent);
 }
 
 // Called when the game starts or when spawned
-void AKinematicCharacterController::BeginPlay()
+void AKCCPhysics::BeginPlay()
 {
 	Super::BeginPlay();
 	if (Collider)
 	{
-		Collider->OnComponentHit.AddDynamic(this, &AKinematicCharacterController::OnCharacterHit);
+		Collider->OnComponentHit.AddDynamic(this, &AKCCPhysics::OnCharacterHit);
 	}
 	InvMass = 1 / Mass;	// Need to do again if mass is ever changed
 }
 
-void AKinematicCharacterController::OnConstruction(const FTransform& Transform)
+void AKCCPhysics::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
 {
-	Super::OnConstruction(Transform);
-	if (Skeleton)
-	{
-		Skeleton->SetSkeletalMesh(CharMesh);
-	}
-}
-
-void AKinematicCharacterController::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
-{
-	if (Camera && PlayerController)
-	{
-		AddMovementInput(Camera, DeltaTime);
-		JumpTimerLogic(DeltaTime);
-		JumpLogic();
-	}
-
 	CalculatePhysicsForces();
 	ApplyVelocity(DeltaTime);
-	if (PlayerController)
-	{
-		InputManager->TempResetKey(EKeys::W);
-		InputManager->TempResetKey(EKeys::A);
-		InputManager->TempResetKey(EKeys::S);
-		InputManager->TempResetKey(EKeys::D);
-	}
-
 }
 #pragma region Collision Detection And Response
 
-FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBounces, const ConstantCollideAndSlideData& CollisionData, EditableCollideAndSlideData& SteppingInfo)
+FVector AKCCPhysics::CollideAndSlideCollision(int& CurrentBounces, const ConstantCollideAndSlideData& CollisionData, EditableCollideAndSlideData& SteppingInfo)
 {
 	if (CurrentBounces >= MaxBounces)
 	{
@@ -213,7 +186,7 @@ FVector AKinematicCharacterController::CollideAndSlideCollision(int& CurrentBoun
 	return CollisionData.CurrentVel;
 }
 
-bool AKinematicCharacterController::SteppingCheck(EditableCollideAndSlideData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel)
+bool AKCCPhysics::SteppingCheck(EditableCollideAndSlideData& SteppingInfo, const FHitResult& Hit, const FVector& LeftoverVel)
 {
 	if (LeftoverVel.IsNearlyZero())
 		return false;
@@ -250,14 +223,14 @@ bool AKinematicCharacterController::SteppingCheck(EditableCollideAndSlideData& S
 	return false;
 }
 
-FVector AKinematicCharacterController::SteppingLogic(const EditableCollideAndSlideData& StepInfo, FVector& CurrentDisplacement)
+FVector AKCCPhysics::SteppingLogic(const EditableCollideAndSlideData& StepInfo, FVector& CurrentDisplacement)
 {
 	if(TransformVelocity.IsNearlyZero())
 		CurrentDisplacement += StepInfo.RemainingVel;
 	return StepInfo.StepHit.Location + GravityNormal * (CapsuleHalfHeight - CapsuleRadius + ConvertToUE5Units(SkinWidth));
 }
 
-void AKinematicCharacterController::OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+void AKCCPhysics::OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if (!OtherComp)
 		return;
@@ -302,7 +275,7 @@ void AKinematicCharacterController::OnCharacterHit(UPrimitiveComponent* HitComp,
 #pragma endregion
 #pragma region Physics Calc And Application
 
-void AKinematicCharacterController::AddForce(const FVector& AddedForce, const ForceType& TypeOfForce)
+void AKCCPhysics::AddForce(const FVector& AddedForce, const ForceType& TypeOfForce)
 {
 	if (AddedForce.ContainsNaN())	// Ensures input Vectors don't contain unidentified or nigh infinite numbers and blocks entry if so
 		return;
@@ -320,7 +293,7 @@ void AKinematicCharacterController::AddForce(const FVector& AddedForce, const Fo
 	}
 }
 
-void AKinematicCharacterController::AddTransformVel(const FVector& AddedTransform)
+void AKCCPhysics::AddTransformVel(const FVector& AddedTransform)
 {
 	if (AddedTransform.ContainsNaN())
 		return;
@@ -328,7 +301,7 @@ void AKinematicCharacterController::AddTransformVel(const FVector& AddedTransfor
 	TransformVelocity += AddedTransform;
 }
 
-void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
+void AKCCPhysics::ApplyVelocity(const float& DeltaTime)
 {
 	float InvDeltaTime = 1 / DeltaTime;
 	FVector NewPosition = ConvertFromUE5Units(GetActorLocation());
@@ -426,16 +399,13 @@ void AKinematicCharacterController::ApplyVelocity(const float& DeltaTime)
 	TotalImpulse = FVector::ZeroVector;
 }
 
-void AKinematicCharacterController::CalculatePhysicsForces()
+void AKCCPhysics::CalculatePhysicsForces()
 {
 	AddForce(CalculateGravityAccel(GravityNormal, GravityMagnitude), ForceType::Acceleration);
 
 	float VelMag = Magnitude(Velocity);
 
-	if(IsGrounded)
-		AddForce(CalculateDragAccel(Velocity, GroundDragCoefficient, InvMass), ForceType::Acceleration);
-	else
-		AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
+	AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
 
 	// Now scales min friction vel by friction coefficient and uses a larger value to stop jitter
 	if (IsInContact && VelMag > MinFrictionVel * FrictionCoefficent)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
@@ -447,47 +417,47 @@ void AKinematicCharacterController::CalculatePhysicsForces()
 	}
 }
 
-float AKinematicCharacterController::CalculateNormalForce(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& FrictionCoeff)
+float AKCCPhysics::CalculateNormalForce(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& FrictionCoeff)
 {
 	// Changed normal force to be more accurate so any forces moving into the surface are included in normal force calc but normal force can't be negative so I check that it isn't and invert the surface normal for the dot product
 	float AccelInSurface = DotProduct(CurrentAccel, -SurfaceNormal);	
 	return (AccelInSurface < 0.0f) ? 0.0f : AccelInSurface * ObjMass * FrictionCoeff;
 }
 
-FVector AKinematicCharacterController::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
+FVector AKCCPhysics::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
 {
 	// Realized issue with KCC is that more worse surface normal means that gravity is going against both gravity more as well as friction
 	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, CurrentAccel, ObjMass, FrictionCoeff) * InvertedMass;
 }
 
-FVector AKinematicCharacterController::CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass)
+FVector AKCCPhysics::CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass)
 {
 	return -Vel * DragCoeff * InvertedMass;
 }
 
-FVector AKinematicCharacterController::CalculateGravityAccel(const FVector& GravityDir, const float& GravityMag)
+FVector AKCCPhysics::CalculateGravityAccel(const FVector& GravityDir, const float& GravityMag)
 {
 	return GravityDir * GravityMag;
 }
 
-inline void AKinematicCharacterController::CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum)
+inline void AKCCPhysics::CalculateMomentum(const FVector& ObjVelocity, const float& ObjMass, FVector& ObjMomentum)
 {
 	ObjMomentum = ObjVelocity * ObjMass;
 }
 
-void AKinematicCharacterController::CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal , float& Impulse)
+void AKCCPhysics::CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal , float& Impulse)
 {
 	Impulse = -(1 + CoefficientOfRestitution) * DotProduct(RelativeVelocity, SurfaceNormal);
 	Impulse *= TotalMass;
 }
 #pragma endregion
 
-inline float AKinematicCharacterController::Square(const float& NumberToSquare)
+inline float AKCCPhysics::Square(const float& NumberToSquare)
 {
 	return NumberToSquare * NumberToSquare;
 }
 
-inline float AKinematicCharacterController::Power(const float& MultNum, const int& Power)
+inline float AKCCPhysics::Power(const float& MultNum, const int& Power)
 {
 	if (Power < 2)	return MultNum;	// Ensures that power isn't too low
 
@@ -499,46 +469,46 @@ inline float AKinematicCharacterController::Power(const float& MultNum, const in
 	return PoweredNum;
 }
 
-FVector AKinematicCharacterController::ConvertToUE5Units(const FVector& Vector)
+FVector AKCCPhysics::ConvertToUE5Units(const FVector& Vector)
 {
 	return Vector * 100.0f;
 }
-FVector AKinematicCharacterController::ConvertFromUE5Units(const FVector& Vector)
+FVector AKCCPhysics::ConvertFromUE5Units(const FVector& Vector)
 {
 	return Vector * 0.01f;	// Equivalent of 1/100 which is the equaivalent of /100 without the decreased performance
 }
-float AKinematicCharacterController::ConvertToUE5Units(const float& NumToConvert)
+float AKCCPhysics::ConvertToUE5Units(const float& NumToConvert)
 {
 	return NumToConvert * 100.0f;
 }
-float AKinematicCharacterController::ConvertFromUE5Units(const float& NumToConvert)
+float AKCCPhysics::ConvertFromUE5Units(const float& NumToConvert)
 {
 	return NumToConvert * 0.01f;
 }
 #pragma region VectorMathematics
 
-inline FVector AKinematicCharacterController::SafeNormalized(const FVector& FullVector)
+FVector AKCCPhysics::SafeNormalized(const FVector& FullVector)
 {
 	float SqrMag = DotProduct(FullVector, FullVector);
 	if (SqrMag == 1.0f)	// Added Safety checks
 		return FullVector;
 	else if (FullVector.IsNearlyZero())
-		return FVector::ZeroVector; FullVector.GetSafeNormal();
+		return FVector::ZeroVector;
 
 	return FullVector / FMath::Sqrt(SqrMag);
 }
 
-inline FVector AKinematicCharacterController::UnSafeNormalized(const FVector& FullVector)
+FVector AKCCPhysics::UnSafeNormalized(const FVector& FullVector)
 {
 	return FullVector / Magnitude(FullVector);
 }
 
-inline float AKinematicCharacterController::Magnitude(const FVector& FullVector)
+float AKCCPhysics::Magnitude(const FVector& FullVector)
 {
 	return FMath::Sqrt(DotProduct(FullVector, FullVector));
 }
 
-inline FVector AKinematicCharacterController::ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector)
+FVector AKCCPhysics::ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector)
 {
 	if (ProjectionVector.IsNearlyZero())
 		return FVector::ZeroVector;
@@ -546,54 +516,54 @@ inline FVector AKinematicCharacterController::ProjectOnVector(const FVector& Vec
 	return DotProduct(VectorToProject, ProjectionVector) / DotProduct(ProjectionVector, ProjectionVector) * ProjectionVector;
 }
 
-inline FVector AKinematicCharacterController::ProjectOnNormal(const FVector& VectorToProject, const FVector& ProjectionNormal)
+FVector AKCCPhysics::ProjectOnNormal(const FVector& VectorToProject, const FVector& ProjectionNormal)
 {
 	return DotProduct(VectorToProject, ProjectionNormal) * ProjectionNormal;
 }
 
-inline FVector AKinematicCharacterController::ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal)
+FVector AKCCPhysics::ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal)
 {
 	return FullVector - ProjectOnVector(FullVector, PlaneNormal);
 }
 
-inline FVector AKinematicCharacterController::ProjectOnNormalizedPlane(const FVector& FullVector, const FVector& PlaneNormal)
+FVector AKCCPhysics::ProjectOnNormalizedPlane(const FVector& FullVector, const FVector& PlaneNormal)
 {
 	return FullVector - ProjectOnNormal(FullVector, PlaneNormal);
 }
 
-inline float AKinematicCharacterController::DotProduct(const FVector& FullVector, const FVector& VectorNormal)
+float AKCCPhysics::DotProduct(const FVector& FullVector, const FVector& VectorNormal)
 {
 	return FullVector.X * VectorNormal.X + FullVector.Y * VectorNormal.Y + FullVector.Z * VectorNormal.Z;
 }
 
-inline FVector AKinematicCharacterController::CrossProduct(const FVector& Vector1, const FVector& Vector2)
+FVector AKCCPhysics::CrossProduct(const FVector& Vector1, const FVector& Vector2)
 {
 	return FVector(Vector1.Y * Vector2.Z - Vector1.Z * Vector2.Y, Vector1.Z * Vector2.X - Vector1.X * Vector2.Z, Vector1.X * Vector2.Y - Vector1.Y * Vector2.X);
 }
 
-inline FVector AKinematicCharacterController::RotateVector(const FVector& VectorToRotate, const FVector& Axis, float Angle, bool IsDegrees)
+FVector AKCCPhysics::RotateVector(const FVector& VectorToRotate, const FVector& Axis, float Angle, bool IsDegrees)
 {
 	Angle = (IsDegrees) ? Angle * (PI/180): Angle;
 	return VectorToRotate * FMath::Cos(Angle) + CrossProduct(Axis, VectorToRotate) * FMath::Sin(Angle) + Axis * DotProduct(Axis, VectorToRotate) * (1.0f - FMath::Cos(Angle));
 }
 
-inline FVector AKinematicCharacterController::ReflectVectorOnNormal(const FVector& VectorToReflect, const FVector& ReflectionNormal)
+FVector AKCCPhysics::ReflectVectorOnNormal(const FVector& VectorToReflect, const FVector& ReflectionNormal)
 {
 	return VectorToReflect - 2 * DotProduct(VectorToReflect, ReflectionNormal) * ReflectionNormal;
 }
 
-inline float AKinematicCharacterController::AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2)
+float AKCCPhysics::AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2)
 {
 	return FMath::Acos(DotProduct(Vector1, Vector2) / (Magnitude(Vector1) * Magnitude(Vector2))) * (180 / PI);
 }
 
-inline FVector AKinematicCharacterController::ProjectAndScaleNormalized(const FVector& FullVector, const FVector& PlaneNormal)
+FVector AKCCPhysics::ProjectAndScaleNormalized(const FVector& FullVector, const FVector& PlaneNormal)
 {
 	// This is not the cause there is some loss of extremely small vectors but nothing much else and doesn't sync with the staggering of the KCC
 	return SafeNormalized(ProjectOnNormalizedPlane(FullVector, PlaneNormal)) * Magnitude(FullVector);
 }
 
-inline FVector AKinematicCharacterController::ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal)
+FVector AKCCPhysics::ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal)
 {
 	// This is not the cause there is some loss of extremely small vectors but nothing much else and doesn't sync with the staggering of the KCC
 	return SafeNormalized(ProjectOnPlane(FullVector, PlaneNormal)) * Magnitude(FullVector);
@@ -601,20 +571,20 @@ inline FVector AKinematicCharacterController::ProjectAndScale(const FVector& Ful
 #pragma endregion
 #pragma region TimeIntegrationMethods
 
-void AKinematicCharacterController::CalculateEulerPosition(FVector& NewPosition, FVector& NewVelocity, const float& DeltaTime)
+void AKCCPhysics::CalculateEulerPosition(FVector& NewPosition, FVector& NewVelocity, const float& DeltaTime)
 {
 	NewVelocity += Acceleration * DeltaTime;
 	NewPosition += NewVelocity * DeltaTime;
 }
 
-void AKinematicCharacterController::CalculateVelocityVerletPosition(FVector& NewDisplacement, FVector& NewVelocity, const float& DeltaTime)
+void AKCCPhysics::CalculateVelocityVerletPosition(FVector& NewDisplacement, FVector& NewVelocity, const float& DeltaTime)
 {
 	// Should technically use previous acceleration but might use acceleration to keep responsiveness
 	NewDisplacement += NewVelocity * DeltaTime + 0.5f * PreviousAcceleration * Square(DeltaTime);
 	NewVelocity += 0.5f * (PreviousAcceleration + Acceleration) * DeltaTime;	// Needs to be done afterwards as Acceleration is seperately accounted for via velocity verlet equation
 }
 
-void AKinematicCharacterController::CalculateVerletPosition(const FVector& PrevPos, FVector& NewPos, FVector& NewVelocity, const float& DeltaTime)
+void AKCCPhysics::CalculateVerletPosition(const FVector& PrevPos, FVector& NewPos, FVector& NewVelocity, const float& DeltaTime)
 {
 	FVector CurrentLocation = NewPos;
 	NewPos = 2 * CurrentLocation - PrevPos + Acceleration * Square(DeltaTime);	// Multiplied by 2 to get location but am now getting displacement instead
@@ -622,7 +592,7 @@ void AKinematicCharacterController::CalculateVerletPosition(const FVector& PrevP
 	// Symmetric Velocity Estimation would go over both timesteps as in previous -> current -> future and estimate based on that with double the deltatime
 }
 
-void AKinematicCharacterController::CalculateRK4Position(FVector& NewPosition, FVector& NewVelocity, const float& DeltaTime)
+void AKCCPhysics::CalculateRK4Position(FVector& NewPosition, FVector& NewVelocity, const float& DeltaTime)
 {	
 	KState k1, k2, k3, k4;	// Stores current velocity
 
@@ -658,244 +628,9 @@ void AKinematicCharacterController::CalculateRK4Position(FVector& NewPosition, F
 	NewVelocity += (k1.VelocityDerivative + 2 * k2.VelocityDerivative + 2 * k3.VelocityDerivative + k4.VelocityDerivative) * (DeltaTime/6.0f);
 }
 
-void AKinematicCharacterController::CalculateRK4Acceleration(const FVector& Position, const FVector& CurrentVelocity, FVector& ComputedAccel)
+void AKCCPhysics::CalculateRK4Acceleration(const FVector& Position, const FVector& CurrentVelocity, FVector& ComputedAccel)
 {
 	ComputedAccel = Acceleration;
 }
 
-#pragma endregion
-#pragma region Player Input
-
-void AKinematicCharacterController::PossessedBy(AController* NewController)
-{
-	Super::PossessedBy(NewController);
-
-	if ((PlayerController = Cast<APlayerController>(NewController)))
-	{
-		PlayerController->bAutoManageActiveCameraTarget = false;
-		AddPlayerInputKeys();
-
-		Camera = GetWorld()->SpawnActor<ACA_PlayerCamera>(ACA_PlayerCamera::StaticClass(), GetActorTransform());
-
-		Camera->FocusedActor = this;
-
-		PlayerController->SetViewTarget(Camera);
-
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-		{
-			Subsystem->AddMappingContext(DefaultMappingContext, 0);
-		}
-	}
-}
-// Called to bind functionality to input
-void AKinematicCharacterController::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-	// Need to get local player to be able to get subsystem
-	if (UEnhancedInputComponent* UserInput = Cast<UEnhancedInputComponent>(PlayerInputComponent))
-	{
-		UserInput->BindAction(MoveButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::Move);
-		UserInput->BindAction(TurnCamAction, ETriggerEvent::Triggered, this, &AKinematicCharacterController::TurnCam);
-		UserInput->BindAction(JumpButton, ETriggerEvent::Started, this, &AKinematicCharacterController::JumpPressed);
-		UserInput->BindAction(JumpButton, ETriggerEvent::Triggered, this, &AKinematicCharacterController::JumpInput);
-	}
-}
-
-void AKinematicCharacterController::Move(const FInputActionValue& InputVal)
-{
-	FVector2D AxisVal = InputVal.Get<FVector2D>();	// Stores 2D WASD value
-	InputKey* CurrentKey;
-	if (AxisVal.Y > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::W)))	// Checks AxisVal Y and if getting the input key is valid then it updates the key in the input manager
-		InputManager->UpdateKeyData(CurrentKey->Key);
-
-	else if(AxisVal.Y < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::S)))
-		InputManager->UpdateKeyData(CurrentKey->Key);	// Uses the worlds real time delta seconds as I can't get it from InputVal
-
-	// Checks AxisVal X and if getting the input key is valid then it updates the key in the input manager
-	if(AxisVal.X < 0 && (CurrentKey = InputManager->GetInputKey(EKeys::A)))	
-		InputManager->UpdateKeyData(CurrentKey->Key);
-
-	else if(AxisVal.X > 0 && (CurrentKey = InputManager->GetInputKey(EKeys::D)))
-		InputManager->UpdateKeyData(CurrentKey->Key);
-}
-
-void AKinematicCharacterController::TurnCam(const FInputActionValue& InputVal)
-{
-	if (Camera)
-	{
-		Camera->CameraMovementAxis = InputVal.Get<FVector2D>();
-	}
-}
-
-void AKinematicCharacterController::JumpInput(const FInputActionValue& InputVal)
-{
-	if (InputVal.Get<bool>())
-	{
-		InputManager->UpdateKeyData(EKeys::SpaceBar, GetWorld()->DeltaRealTimeSeconds);
-	}
-}
-
-void AKinematicCharacterController::JumpPressed(const FInputActionValue& InputVal)
-{
-	if (InputVal.Get<bool>())
-	{
-		InputKey* Key = InputManager->GetInputKey(EKeys::SpaceBar);
-
-		if (Key)
-			Key->IsPressed = true;
-	}
-}
-
-
-void AKinematicCharacterController::AddPlayerInputKeys()
-{
-	int MinimumInputFrames = 1;
-	InputManager = Cast<UGI_InputManager>(GetGameInstance());
-	InputManager->AddInputKey(EKeys::W, MinimumInputFrames);
-	InputManager->AddInputKey(EKeys::S, MinimumInputFrames);
-	InputManager->AddInputKey(EKeys::A, MinimumInputFrames);
-	InputManager->AddInputKey(EKeys::D, MinimumInputFrames);
-	InputManager->AddInputKey(EKeys::SpaceBar, MinimumInputFrames);
-}
-
-void AKinematicCharacterController::AddMovementInput(AActor* MovementAxis, const float& DeltaTime)
-{
-	//FVector MovementNormal = (IsGrounded) ? FloorNormal : GravityNormal;	// This is good for transform but worse for physics based as some movement is removed when seperated into plane and gravity normal
-	FVector MovementNormal = GravityNormal;
-	FVector VelocityXZ = ProjectOnNormalizedPlane(Velocity, MovementNormal);
-
-	if (Magnitude(VelocityXZ) > MaxSpeed)
-		return;
-
-	FVector MovementForce = FVector::ZeroVector;
-	FVector TransformForwardXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorForwardVector(), MovementNormal));
-	FVector TransformRightXZ = SafeNormalized(ProjectOnNormalizedPlane(MovementAxis->GetActorRightVector(), MovementNormal));
-
-	
-	InputKey* Key;
-
-	if ((Key = InputManager->GetInputKey(EKeys::W)) && Key->IsDown)	// Tidied up so that GetInput Key isn't called twice
-	{
-		MovementForce += TransformForwardXZ;
-	}
-	if ((Key = InputManager->GetInputKey(EKeys::S)) && Key->IsDown)
-	{
-		MovementForce -= TransformForwardXZ;
-
-	}
-	if ((Key = InputManager->GetInputKey(EKeys::A)) && Key->IsDown)
-	{
-		MovementForce -= TransformRightXZ;
-
-	}
-	if ((Key = InputManager->GetInputKey(EKeys::D)) && Key->IsDown)
-	{
-		MovementForce += TransformRightXZ;
-	}
-
-	MovementForce = SafeNormalized(MovementForce);
-
-	if (MovementForce.IsNearlyZero())
-		return;
-
-	RotateToMovement(SafeNormalized(ProjectOnNormalizedPlane(MovementForce, GravityNormal)), DeltaTime);	 // Should Rotate player towards movement force
-
-	FVector DriftForce = -ProjectOnNormalizedPlane(VelocityXZ, MovementForce) * CorneringStiffness;
-
-	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Move Mod:" + FString::SanitizeFloat(CalculateSpeedMod(VelocityXZ, MovementForce)));
-
-	//float SlopeScalingMod = (1 + (1 - DotProduct(FloorNormal, GravityNormal)) * SlopeMod);	// Added so slope can gain modifier when going up slopes
-	MovementForce = MovementForce * MoveSpeed * CalculateSpeedMod(VelocityXZ, MovementForce);	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
-	
-	
-	// Should go roughly
-	//AddTransformVel(MovementForce);
-	AddForce(MovementForce + DriftForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why
-}
-float AKinematicCharacterController::CalculateSpeedMod(const FVector& CurrentVelocity, const FVector& MovementDir)
-{
-	if (!SpeedCurve || !CorneringCurve)
-		return 1.0f;
-
-	float VelMag = Magnitude(CurrentVelocity);
-
-	if (!IsGrounded)	// This whole function is what is likely causing most of my issues
-	{
-		return AirSpeed * CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity / VelMag, MovementDir));
-	}
-	return SpeedCurve->FloatCurve.Eval(VelMag / MaxSpeed) * CorneringCurve->FloatCurve.Eval(DotProduct(CurrentVelocity/VelMag, MovementDir));
-}
-
-void AKinematicCharacterController::JumpLogic()
-{
-	InputKey* Key = InputManager->GetInputKey(EKeys::SpaceBar);
-
-	if (!Key)
-		return;
-
-	if (IsGrounded)
-	{
-		CurrentJumpCount = 0;
-		JumpTimer = 0.0f;
-		HasFallen = false;
-	}
-
-	bool CanJump = Key->IsDown || (JumpBufferTimer > 0.0f && IsGrounded) || (!IsGrounded && CoyoteTimer > 0.0f && Key->IsDown);
-
-	CanJump = CanJump && CurrentJumpCount < MaxJumpCount && (CurrentJumpCount < 1 || (JumpTimer > MinJumpTime && Key->IsPressed));	// Aded min Jump time check so that double jumps have a min jump time
-
-	float UpwardVel = DotProduct(Velocity, GravityNormal);
-
-	bool ShouldFall = JumpTimer > MinJumpTime && !Key->IsDown && !IsGrounded && !HasFallen && UpwardVel >= 0.0f;
-
-	if (CanJump)
-	{
-		AddForce(JumpMagnitude * GravityNormal * Mass, ForceType::Impulse);
-		++CurrentJumpCount;
-		JumpTimer = 0.0f;
-		Velocity -= ProjectOnNormal(Velocity, GravityNormal);
-	}
-	else if (ShouldFall)
-	{
-    	AddForce(VariableHeightImp * -GravityNormal * Mass, ForceType::Impulse);
-		HasFallen = true;
-	}
-
-	InputManager->TempResetKey(EKeys::SpaceBar);
-	InputManager->OnKeyRelease(EKeys::SpaceBar);
-	
-}
-void AKinematicCharacterController::JumpTimerLogic(const float& DeltaTime)
-{
-	if (IsGrounded)
-	{
-		CoyoteTimer = CoyoteTime;
-	}
-	else if (CoyoteTimer > 0.0f && !IsGrounded)
-	{
-		CoyoteTimer -= DeltaTime;
-	}
-	
-	if(InputManager->GetInputKey(EKeys::SpaceBar)->IsDown && !IsGrounded)
-	{
-		JumpBufferTimer = JumpBufferTime;
-	}
-	else if (JumpBufferTimer > 0.0f)
-	{
-		JumpBufferTimer -= DeltaTime;
-	}
-
-	if (CurrentJumpCount > 0 && !IsGrounded)
-	{
-		JumpTimer += DeltaTime;
-	}
-}
-void AKinematicCharacterController::RotateToMovement(const FVector& MovementVector, const float& DeltaTime)
-{
-	if (MovementVector.IsNearlyZero())
-		return;
-	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), SafeNormalized(MovementVector).Rotation().Quaternion(), DeltaTime * 2).Rotator();
-	SetActorRotation(MovementRotation);
-}
 #pragma endregion

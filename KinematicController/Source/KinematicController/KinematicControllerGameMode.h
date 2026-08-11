@@ -5,8 +5,6 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 
-#include "KinematicController/Private/KinematicCharacterController.h"
-
 #include "KinematicControllerGameMode.generated.h"
 
 UCLASS(minimalapi)

@@ -17,20 +17,13 @@
 
 #include "EnhancedInputComponent.h"
 
-#include "KinematicCharacterController.generated.h"
+#include "KCCPhysics.generated.h"
 
 enum ForceType
 {
 	Force,
 	Acceleration,
 	Impulse
-};
-
-enum TimeIntegration
-{
-	VelocityVerlet,
-	Verlet,
-	RK4
 };
 
 struct KState
@@ -67,26 +60,23 @@ struct ConstantCollideAndSlideData	// While these are only set before collide an
 };
 
 UCLASS()
-class AKinematicCharacterController : public APawn
+class AKCCPhysics : public APawn
 {
 	GENERATED_BODY()
 
-public:
-	// Sets default values for this pawn's properties
-	AKinematicCharacterController();
-
 protected:
+	// Sets default values for this pawn's properties
+	AKCCPhysics();
+
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	virtual void OnConstruction(const FTransform& Transform) override;
-
-public:	
 	/// <summary>
 	/// Calls Every Physics Frame and Calls all physics and movement related Functions
+	/// Use Super:: to Integrate forces with collision detection
 	/// </summary>
 	/// <param name="DeltaTime"> The amount of time that the physics frame covers </param>
-	/// <param name="SimTime"></param>
+	/// <param name="SimTime"> I do not know what this is </param>
 	virtual void AsyncPhysicsTickActor(float DeltaTime, float SimTime) override;
 
 #pragma region Physics Calc And Application
@@ -96,15 +86,15 @@ public:
 	FVector PreviousAcceleration = FVector::ZeroVector;	// This stores the previous/current (depending on if you see the time step being acted in as the future or the current) timesteps acceleration and this is stores the current/future time steps acceleraion at the end of it. This is needed for certain time integrations that use previous acceleration for accuracy such as verlet and velocity verlet
 	FVector PreviousPosition = FVector::ZeroVector;	// This stores the previous position of the player for time integration methods such as verlet
 
-	FVector Velocity = FVector::ZeroVector;		// This stores and retains velocity this is applied during time integration but if interrupted via collisions then this is redefined by adding both displacements together and multiplying by inverse delta time
+protected:
 	FVector TransformVelocity = FVector::ZeroVector;	// This stores Transform Velocity which is essentially an acceleration that you don't want retained over time so it is a one time acceleration allowing for a simple transform based mpvement instead of physics based movement
 	FVector TotalImpulse = FVector::ZeroVector;		// This stores the total impulse which is then added and multiplied by InvMass to velocity at the beginning of Apply Velocity this is mostly for unexpected collisions
-
+	
+public:
+	FVector Velocity = FVector::ZeroVector;		// This stores and retains velocity this is applied during time integration but if interrupted via collisions then this is redefined by adding both displacements together and multiplying by inverse delta time
+	
 	FVector GravityNormal = FVector::UpVector;		// This is the gravity normal and is being used as a normal as it makes comparisons to it a lot easier such as for friction
 	float GravityMagnitude = -9.81f;	// This is the gravity's magnitude and directly effects Normal force and hence friction
-
-	float Mass = 70.0f;		// This represents the mass of the collider and is used for force, momentum and normal force calculations among others
-	float InvMass = 1.0f;	// This is used to store the inverse Mass which increases efficiency as division is done once and then all further operations are multiplication which is less CPU heavy
 
 	float CoefficientOfRestitution = 0.5f;	// This is the ratio of kinetic enegy that would be lost during a bounce
 
@@ -113,12 +103,11 @@ public:
 
 	float DragCoefficent = 0.4f;	// This is the drag coefficient and reduces velocity by a fraction of itself this happens due to air resistance or other forms of drag
 
-	/// <summary>
-	/// This handles all the resulting physics, movement and collision handling as well as stepping
-	/// </summary>
-	/// <param name="DeltaTime"> Amount of time moved over time, also used for Time Integration</param>
-	void ApplyVelocity(const float& DeltaTime);
+protected:
+	float Mass = 70.0f;		// This represents the mass of the collider and is used for force, momentum and normal force calculations among others
+	float InvMass = 1.0f;	// This is used to store the inverse Mass which increases efficiency as division is done once and then all further operations are multiplication which is less CPU heavy
 
+public:
 	/// <summary>
 	/// Uses F = ma to get acceleration and transform into velocity
 	/// </summary>
@@ -132,11 +121,18 @@ public:
 	/// </summary>
 	/// <param name="AddedTransform"> Added to TransformVel to be used in transform based movement </param>
 	void AddTransformVel(const FVector& AddedTransform);
+protected:
+
+	/// <summary>
+	/// This handles all the resulting physics, movement and collision handling as well as stepping
+	/// </summary>
+	/// <param name="DeltaTime"> Amount of time moved over time, also used for Time Integration</param>
+	virtual void ApplyVelocity(const float& DeltaTime);
 
 	/// <summary>
 	/// This essentially applies all the linear physics forces as rotational physics isn't needing considered
 	/// </summary>
-	void CalculatePhysicsForces();
+	virtual void CalculatePhysicsForces();
 
 	/// <summary>
 	/// This calculates normal force which can be used for many things but in this case mainly for friction
@@ -147,6 +143,7 @@ public:
 	/// <param name="FrictionCoeff"> This is the Coefficient of friction between the capsule and the ground </param>
 	/// <returns> This returns the amount of normal force that resists gravity </returns>
 	float CalculateNormalForce(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& FrictionCoeff);
+	
 	// Made the following 3 functions for RK4 integration and for when acceleration needs computing won't use in this project except maybe to make things looka bit cleaner
 	
 	/// <summary>
@@ -228,7 +225,7 @@ public:
 	float CapsuleRadius = 30.0f;
 
 	float SkinWidth = 0.02f;	// The skin width of the capsule collider in meters this is used heavily in the collision to make sure the collider never intersects with any of its environment
-
+	
 	/// <summary>
 	/// This is the whole collision solution for the KCC it uses the collide and slide algorithm which slides the displacement projected onto the surface normal's plane
 	/// There is currently a slight issue with bumps don't know why but it causes issues on higher slopes and moving against walls is speeding up the KCC too much.
@@ -237,7 +234,7 @@ public:
 	/// <param name="CollisionData"> This is all the Essential data for the Collide and Slide function and is only changed when recursed. </param>
 	/// <param name="SteppingInfo"> This is less essential but is used for stepping and correction vel which avoids some of the bouncing by removing it from velocity later on. </param>
 	/// <returns> This returns the sum of all the snap to surface displacements along with the remaining vel that did not hit anything after being projected. </returns>
-	FVector CollideAndSlideCollision(int& CurrentBounces, const ConstantCollideAndSlideData& CollisionData , EditableCollideAndSlideData& SteppingInfo);
+	virtual FVector CollideAndSlideCollision(int& CurrentBounces, const ConstantCollideAndSlideData& CollisionData , EditableCollideAndSlideData& SteppingInfo);
 
 	/// <summary>
 	/// This is the check used in the Collide and Slide Collision to when hitting walls using a sphere cast to check if it could be steppable or not.
@@ -273,8 +270,13 @@ public:
 
 
 #pragma region TimeIntegrationMethods
-	
-	
+
+	/// <summary>
+	/// Calculates Position
+	/// </summary>
+	/// <param name="NewPosition"></param>
+	/// <param name="NewVelocity"></param>
+	/// <param name="DeltaTime"></param>
 	void CalculateEulerPosition(FVector& NewPosition, FVector& NewVelocity, const float& DeltaTime);
 
 	/// <summary>
@@ -305,8 +307,6 @@ public:
 	/// <param name="ComputedAccel"> Passes by reference the acceleration which is currently just the acceleration variable</param>
 	void CalculateRK4Acceleration(const FVector& Position, const FVector& CurrentVelocity, FVector& ComputedAccel);
 #pragma endregion
-
-
 
 	/// <summary>
 	/// This is just squaring code and can make some code such as the dot product more clean and readable
@@ -362,20 +362,20 @@ public:
 	/// </summary>
 	/// <param name="FullVector"> Input Vector to be Normalized</param>
 	/// <returns>Returns a normalized vector </returns>
-	inline FVector SafeNormalized(const FVector& FullVector);
+	FVector SafeNormalized(const FVector& FullVector);
 
 	/// <summary>
 	/// Custom Function to get normalized Vector by dividing by magnitude
 	/// </summary>
 	/// <param name="FullVector"> Input Vector to be Normalized</param>
 	/// <returns>Returns a normalized vector </returns>
-	inline FVector UnSafeNormalized(const FVector& FullVector);
+	FVector UnSafeNormalized(const FVector& FullVector);
 	/// <summary>
 	/// Custom Function to calculate magnitude of a vector by squaring and adding vector together then square rooting
 	/// </summary>
 	/// <param name="FullVector"> Vector to Find the magnitude of</param>
 	/// <returns> Returns the magnitude of the inputted vector</returns>
-	inline float Magnitude(const FVector& FullVector);
+	float Magnitude(const FVector& FullVector);
 
 	/// <summary>
 	/// Projects the first vector onto the projection vector
@@ -384,7 +384,7 @@ public:
 	/// <param name="VectorToProject"> Vector that is projetced onto the projection vector</param>
 	/// <param name="ProjectionVector"> Vector that is being projected on</param>
 	/// <returns> Returns the projected vector</returns>
-	inline FVector ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector);
+	FVector ProjectOnVector(const FVector& VectorToProject, const FVector& ProjectionVector);
 
 	/// <summary>
 	/// Projects the first vector onto the normal using dot product which is more efficient than the other version
@@ -392,14 +392,14 @@ public:
 	/// <param name="VectorToProject"> This is the vector to be projected onto the normal </param>
 	/// <param name="ProjectionNormal"> This is the projection normal and must have a length of approx 1 or it will not give an accurate result</param>
 	/// <returns> Returns the projected vector</returns>
-	inline FVector ProjectOnNormal(const FVector& VectorToProject, const FVector& ProjectionNormal);
+	FVector ProjectOnNormal(const FVector& VectorToProject, const FVector& ProjectionNormal);
 	/// <summary>
 	/// Removes the Projection of Full vector on plane normal to get the vector part parallel to the normal
 	/// </summary>
 	/// <param name="FullVector"> This is the vector that is projected onto the plane </param>
 	/// <param name="PlaneNormal"> This is the Vector that takes what is perpendicular to the plane</param>
 	/// <returns> Returns the vector projected along the specified plane</returns>
-	inline FVector ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal);
+	FVector ProjectOnPlane(const FVector& FullVector, const FVector& PlaneNormal);
 
 	/// <summary>
 	/// Removes the Projection of Full vector on plane normal to get the vector part parallel to the normal
@@ -408,13 +408,13 @@ public:
 	/// <param name="PlaneNormal"> This is the Vector that takes what is perpendicular to the plane
 	/// This must have an approx length of 1 as it saves efficiency by just using the dot product once with the normal</param>
 	/// <returns> Returns the vector projected along the specified plane</returns>
-	inline FVector ProjectOnNormalizedPlane(const FVector& FullVector, const FVector& PlaneNormal);
+	FVector ProjectOnNormalizedPlane(const FVector& FullVector, const FVector& PlaneNormal);
 
 	/// <summary>
 	/// Gets the total angle between 2 vectors
 	/// </summary>
 	/// <returns> The angle between the vectors </returns>
-	inline float AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2);
+	float AngleBetweenVectors(const FVector& Vector1, const FVector& Vector2);
 
 	/// <summary>
 	/// Used to tell direction and magnitude towards a direction
@@ -423,15 +423,15 @@ public:
 	/// <param name="FullVector"></param>
 	/// <param name="VectorNormal"></param>
 	/// <returns></returns>
-	inline float DotProduct(const FVector& FullVector, const FVector& VectorNormal);
+	float DotProduct(const FVector& FullVector, const FVector& VectorNormal);
 
 	/// <summary>
 	/// Used to Get the normal between 2 vectors
 	/// </summary>
 	/// <param name="Vector1"> The First Vector To Calculate the normal</param>
 	/// <param name="Vector2"> The First Vector To Calculate the normal</param>
-	/// <returns></returns>
-	inline FVector CrossProduct(const FVector& Vector1, const FVector& Vector2);
+	/// <returns> The Normal between the 2 vectors </returns>
+	FVector CrossProduct(const FVector& Vector1, const FVector& Vector2);
 	/// <summary>
 	/// Uses Rodriguez' Rotation Formula to Rotate Vectors keeping their magnitude
 	/// </summary>
@@ -440,7 +440,7 @@ public:
 	/// <param name="Angle"> The Angle at which the vector needs to be rotated </param>
 	/// <param name="IsDegrees"> If this is true the degrees are converted to radians as that is the input taken  by rodriguez' formula </param>
 	/// <returns></returns>
-	inline FVector RotateVector(const FVector& VectorToRotate, const FVector& Axis , float Angle, bool IsDegrees = true);
+	FVector RotateVector(const FVector& VectorToRotate, const FVector& Axis , float Angle, bool IsDegrees = true);
 
 	/// <summary>
 	/// Basically how this works is you take away the vector that is going 
@@ -448,7 +448,7 @@ public:
 	/// <param name="VectorToReflect"></param>
 	/// <param name="ReflectionNormal"></param>
 	/// <returns></returns>
-	inline FVector ReflectVectorOnNormal(const FVector& VectorToReflect, const FVector& ReflectionNormal);
+	FVector ReflectVectorOnNormal(const FVector& VectorToReflect, const FVector& ReflectionNormal);
 
 	/// <summary>
 	/// Unrealistic Version of Project On Plane that keeps the same magnitude essentially rotating it 
@@ -458,7 +458,7 @@ public:
 	/// <param name="FullVector"> Is used for the scaling Magnitude and the direction to be projected along the plane</param>
 	/// <param name="PlaneNormal"> This is used as the Normal to confine the vector to its corresponding plane, This does not need to be normalized</param>
 	/// <returns> The Full Vector Projected and rescaled onto the plane</returns>
-	inline FVector ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal);
+	FVector ProjectAndScale(const FVector& FullVector, const FVector& PlaneNormal);
 	/// <summary>
 	/// Unrealistic Version of Project On Plane that keeps the same magnitude essentially rotating it 
 	/// This is done to keep same velocity for the KCC for player experience but also means that I can't merge Movement Displacement and Gravity Displacement
@@ -468,96 +468,8 @@ public:
 	/// <param name="FullVector"> Is used for the scaling Magnitude and the direction to be projected along the plane</param>
 	/// <param name="PlaneNormal"> This is used as the Normal to confine the vector to its corresponding plane, This needs to be normalized</param>
 	/// <returns></returns>
-	inline FVector ProjectAndScaleNormalized(const FVector& FullVector, const FVector& PlaneNormal);
+	FVector ProjectAndScaleNormalized(const FVector& FullVector, const FVector& PlaneNormal);
 
 #pragma endregion
-
-	UPROPERTY(EditAnywhere)
-	USkeletalMesh* CharMesh;
-	UPROPERTY(EditAnywhere)
-	USkeletalMeshComponent* Skeleton;
-
-
-#pragma region Player Input
-
-	UGI_InputManager* InputManager;
-
-	UPROPERTY(EditAnywhere)
-	UInputMappingContext* DefaultMappingContext;
-
-	float MoveSpeed = 8.0f;	// Movement might be slightly slow but might be best to increase later
-
-	float MaxSpeed = 6.0f;
-
-	float AirSpeed = 0.3f;
-
-	float GroundDragCoefficient = 5.0f; // Removes Velocity so that Velocity is instantly removed when on ground
-	// Means that you can control the amoun of slide
-
-	float CorneringStiffness = 3.0f;
-
-	UPROPERTY(EditAnywhere)
-	UCurveFloat* CorneringCurve;
-
-	UPROPERTY(EditAnywhere)
-	UCurveFloat* SpeedCurve;
-
-	float JumpMagnitude = 7.0f;
-
-	float VariableHeightImp = 2.0f;
-
-	bool HasFallen = false;
-
-	int MaxJumpCount = 2;
-	int CurrentJumpCount = 0;
-
-	float JumpBufferTime = 0.1f;
-
-	float JumpBufferTimer = 0.0f;
-
-	float CoyoteTime = 0.05f;
-
-	float CoyoteTimer = 0.0f;
-
-	float JumpTimer = 0.0f;
-
-	float MinJumpTime = 0.2f;	// This essentially decides how high the minimum jump is can't use actual height as its not a good measure and can be effected by other things
-
-	ACA_PlayerCamera* Camera = nullptr;
-
-	APlayerController* PlayerController;
-
-	UPROPERTY(EditAnywhere)
-	UInputAction* MoveButton;
-	UPROPERTY(EditAnywhere)
-	UInputAction* TurnCamAction;
-	UPROPERTY(EditAnywhere)
-	UInputAction* JumpButton;
-
-	virtual void PossessedBy(AController* NewController) override;
-
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-	void Move(const FInputActionValue& InputVal);
-	void TurnCam(const FInputActionValue& InputVal);
-	void JumpInput(const FInputActionValue& InputVal);
-	void JumpPressed(const FInputActionValue& InputVal);
-
-
-	void AddPlayerInputKeys();
-
-	void AddMovementInput(AActor* MovementAxis, const float& DeltaTime);
-
-	float CalculateSpeedMod(const FVector& CurrentVelocity, const FVector& MovementDir);
-
-	void JumpLogic();
-
-	void JumpTimerLogic(const float& DeltaTime);
-
-	void RotateToMovement(const FVector& MovementVector, const float& DeltaTime);
-#pragma endregion
-
-
 
 };
