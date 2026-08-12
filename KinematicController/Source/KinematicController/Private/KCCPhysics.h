@@ -93,17 +93,26 @@ protected:
 public:
 	FVector Velocity = FVector::ZeroVector;		// This stores and retains velocity this is applied during time integration but if interrupted via collisions then this is redefined by adding both displacements together and multiplying by inverse delta time
 	
+	UPROPERTY(EditAnywhere, Category = "KCC Physics")
 	FVector GravityNormal = FVector::UpVector;		// This is the gravity normal and is being used as a normal as it makes comparisons to it a lot easier such as for friction
+	
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, Units = "m/s^2"), Category = "KCC Physics")
 	float GravityMagnitude = -9.81f;	// This is the gravity's magnitude and directly effects Normal force and hence friction
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 100.0f), Category = "KCC Physics")
 	float CoefficientOfRestitution = 0.5f;	// This is the ratio of kinetic enegy that would be lost during a bounce
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 100.0f), Category = "KCC Physics")
 	float FrictionCoefficent = 0.7f;	// This is the friction coefficient this decides how much friction the KCC has and how hard it is to get moving
+	
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 180.0f, Units = "m/s"), Category = "KCC Physics")
 	float MinFrictionVel = 0.05f;	// This is the minimum velocity magnitude necessary for friction to act so it doesn't add more than the actual  velocity and set it in a constant state of vibration at rest
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 100.0f), Category = "KCC Physics")
 	float DragCoefficent = 0.4f;	// This is the drag coefficient and reduces velocity by a fraction of itself this happens due to air resistance or other forms of drag
 
 protected:
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 180.0f, Units = "Kilograms"), Category = "KCC Physics")
 	float Mass = 70.0f;		// This represents the mass of the collider and is used for force, momentum and normal force calculations among others
 	float InvMass = 1.0f;	// This is used to store the inverse Mass which increases efficiency as division is done once and then all further operations are multiplication which is less CPU heavy
 
@@ -201,16 +210,22 @@ protected:
 		
 	FVector FloorNormal = FVector::UpVector;	// The floor normal allows things like friction to tell how much should be used and to tell if the player is on a slope
 
+	UPROPERTY(EditAnywhere, meta=(AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 180.0f, Units = "Degrees"), Category = "KCC Collision")
 	float MaxSlopeAngle = 80.0f;	// The maximum slope angle where the slope is still treated like a floor instead of a slope
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = -1.0f, ClampMax = 1.0f), Category = "KCC Collision")
 	float MinSlopeSimilarity = 0.7f;	// The Impact Normal hasn't always been accurate so this makes sure that both normals are semi similar
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, Units = "Meters"), Category = "KCC Collision")
 	float MaxStepHeight = 1.0f;	// This is the max stepping height in meters
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, Units = "Meters"), Category = "KCC Collision")
 	float MinStepDist = 0.2f;	// This is the minimum amount the capsule must be moved into the blocking surface so that the capsule doesn't immediately slide off the edge of the step
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, Units = "Meters"), Category = "KCC Collision")
 	float GroundingCheck = 0.08f;	// This is added so that for gravity movement you get an extra skin width to avoid bumps that for some reasons occur on higher slopes
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0, ClampMax = 100), Category = "KCC Collision")
 	int MaxBounces = 6;	// The maximum amount of bounces the Collide and Slide Algorithm can do before returning a zero vector this prevents infinite recursion
 
 	bool IsGrounded = false;	// The boolean that shows if the player is grounded this is based off of the direction of the vertical movement and if there was a bounce in the collision
@@ -221,9 +236,13 @@ protected:
 
 	UCapsuleComponent* Collider;	// The capsule Collider that stops unexpected collisions from phasing through
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 1.0f, Units = "Centimeters"), Category = "KCC Collision")
 	float CapsuleHalfHeight = 90.0f;	// The Capsule half height and radius in cm instead of meters
+
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 1.0f, Units = "Centimeters"), Category = "KCC Collision")
 	float CapsuleRadius = 30.0f;
 
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, Units = "Meters"), Category = "KCC Collision")
 	float SkinWidth = 0.02f;	// The skin width of the capsule collider in meters this is used heavily in the collision to make sure the collider never intersects with any of its environment
 	
 	/// <summary>

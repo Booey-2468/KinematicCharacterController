@@ -61,11 +61,11 @@ FVector AKCCPhysics::CollideAndSlideCollision(int& CurrentBounces, const Constan
 
 	FHitResult Hit;
 
-	GetWorld()->DebugDrawTraceTag = "DebugLine";
+	//GetWorld()->DebugDrawTraceTag = "DebugLine";
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(this);
 	Params.bTraceComplex = true;
-	Params.TraceTag = GetWorld()->DebugDrawTraceTag;
+	//Params.TraceTag = GetWorld()->DebugDrawTraceTag;
 
 	FCollisionShape ShapeBounds = FCollisionShape::MakeCapsule(CapsuleRadius - ConvertToUE5Units(SkinWidth), CapsuleHalfHeight - ConvertToUE5Units(SkinWidth));
 
@@ -167,7 +167,7 @@ FVector AKCCPhysics::CollideAndSlideCollision(int& CurrentBounces, const Constan
 				if (Hit.Component->IsSimulatingPhysics())	// Added some code so that when hitting a wall that is considered a physics object it should add the appropriate impulse
 				{
 					float Impulse;
-					CalculateBounceImpulse(Hit.Component->GetComponentVelocity() + ConvertToUE5Units(Velocity), Hit.Component->GetMass() + Mass, FloorNormal, Impulse);
+					CalculateBounceImpulse(ConvertToUE5Units(Velocity) - Hit.Component->GetComponentVelocity(), Hit.Component->GetMass() + Mass, FloorNormal, Impulse);
 					Hit.Component->AddImpulseAtLocation(TotalImpulse * -FloorNormal, Hit.ImpactPoint);
 				}
 			}
@@ -191,9 +191,9 @@ bool AKCCPhysics::SteppingCheck(EditableCollideAndSlideData& SteppingInfo, const
 	if (LeftoverVel.IsNearlyZero())
 		return false;
 
-	GetWorld()->DebugDrawTraceTag = "DebugLine";
+	//GetWorld()->DebugDrawTraceTag = "DebugLine";
 	FCollisionQueryParams params;
-	params.TraceTag = GetWorld()->DebugDrawTraceTag;
+	//params.TraceTag = GetWorld()->DebugDrawTraceTag;
 	params.AddIgnoredActor(this);
 
 	FCollisionShape Sphere = FCollisionShape::MakeSphere(CapsuleRadius);
