@@ -214,7 +214,7 @@ protected:
 	float MaxSlopeAngle = 80.0f;	// The maximum slope angle where the slope is still treated like a floor instead of a slope
 
 	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = -1.0f, ClampMax = 1.0f), Category = "KCC Collision")
-	float MinSlopeSimilarity = 0.7f;	// The Impact Normal hasn't always been accurate so this makes sure that both normals are semi similar
+	float MinSlopeSimilarity = 0.75f;	// The Impact Normal hasn't always been accurate so this makes sure that both normals are semi similar
 
 	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, Units = "Meters"), Category = "KCC Collision")
 	float MaxStepHeight = 1.0f;	// This is the max stepping height in meters
