@@ -33,7 +33,5 @@ public:
 	InputKey* GetInputKey(const FKey& KeyToGet);
 	void UpdateKeyData(const FKey& KeyToUpdate, float DeltaTime = -1);
 	void OnKeyRelease(const FKey& ReleasedKey);
-
-
-	
+	void UpdateKeyPress(const FKey& PressableKey);
 };

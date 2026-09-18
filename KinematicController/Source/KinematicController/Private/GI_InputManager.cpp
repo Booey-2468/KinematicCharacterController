@@ -100,3 +100,10 @@ void UGI_InputManager::OnKeyRelease(const FKey& ReleasedKey)
 		Key->HeldTime = 0.0f;
 	}
 }
+
+void UGI_InputManager::UpdateKeyPress(const FKey& PressableKey)
+{
+	InputKey* Key = GetInputKey(PressableKey);
+	if (!Key->IsPressed)
+		Key->IsPressed = true;
+}

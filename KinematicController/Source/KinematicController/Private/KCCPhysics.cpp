@@ -371,7 +371,6 @@ void AKCCPhysics::ApplyVelocity(const float& DeltaTime)
 	IsGrounded = (BouncesOnGround > 0 && DotProduct(GravityDisplacement, GravityNormal) <= 0) ? true : false;
 	IsInContact = (TotalBounces > 0) ? true : false;
 
-
 	// Ok so my Movement with TransformVel is somewhat fine which means the issue is indeed velocity and possibly how my Collision Detection can affect it
 	// It seems that the Collision Detection may have an issue with smaller Velocities
 	
@@ -385,8 +384,11 @@ void AKCCPhysics::ApplyVelocity(const float& DeltaTime)
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "MoveMagComparison:" + FString::FromInt(Magnitude(MovementDisplacement) / OriginalMoveMag * 100) + "%");
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Bounces:" + FString::FromInt(BouncesOnGround));
 
-	if(IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
+	if (IsInContact)	// Avoids extra calc and missing accuracy by redundantly calculating new velocity
+	{
 		Velocity = (MovementDisplacement + GravityDisplacement) * InvDeltaTime;	// Updates Velocity based on collision displacement
+		PreviousPosition -= MovementDisplacement + GravityDisplacement;
+	}
 	// Will have to use Movement Displacement for velocity though if stepping may temporarily stop the player
 	// Used better way to solve issue instead of Manually adding radius and what not instead was able to get capsule location at collision for the displacement 
 	// Snap To Surface now uses this which now doesn't overlap with anything

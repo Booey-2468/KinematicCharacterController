@@ -132,13 +132,8 @@ void AKCCInput::JumpInput(const FInputActionValue& InputVal)
 
 void AKCCInput::JumpPressed(const FInputActionValue& InputVal)
 {
-	if (InputVal.Get<bool>())
-	{
-		InputKey* Key = InputManager->GetInputKey(EKeys::SpaceBar);
-
-		if (Key)
-			Key->IsPressed = true;
-	}
+	// Don't Know why but the bool for this returns as false its really weird
+	InputManager->UpdateKeyPress(EKeys::SpaceBar);
 }
 
 
@@ -233,13 +228,16 @@ void AKCCInput::JumpLogic()
 		HasFallen = false;
 	}
 
-	bool CanJump = Key->IsDown || (JumpBufferTimer > 0.0f && IsGrounded) || (!IsGrounded && CoyoteTimer > 0.0f && Key->IsDown);
+	bool CanJump = Key->IsPressed || (JumpBufferTimer > 0.0f && IsGrounded);
 
-	CanJump = CanJump && CurrentJumpCount < MaxJumpCount && (CurrentJumpCount < 1 || (JumpTimer > MinJumpTime && Key->IsPressed));	// Aded min Jump time check so that double jumps have a min jump time
+	CanJump = CanJump && CurrentJumpCount < MaxJumpCount && (CurrentJumpCount < 1 || JumpTimer > MinJumpTime);	// Aded min Jump time check so that double jumps have a min jump time
+
+	if (Key->IsPressed)
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Can Player Jump? " + FString::FromInt(CurrentJumpCount));
 
 	float UpwardVel = DotProduct(Velocity, GravityNormal);
 
-	bool ShouldFall = JumpTimer > MinJumpTime && !Key->IsDown && !IsGrounded && !HasFallen && UpwardVel >= 0.0f;
+	bool ShouldFall = JumpTimer > MinJumpTime && !Key->IsDown && !IsGrounded && !HasFallen && UpwardVel > 0.0f;
 
 	if (CanJump)
 	{
