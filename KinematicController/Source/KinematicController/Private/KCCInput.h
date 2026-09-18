@@ -84,7 +84,7 @@ protected:
 
 	float JumpTimer = 0.0f;
 
-	float MinJumpTime = 0.2f;	// This essentially decides how high the minimum jump is can't use actual height as its not a good measure and can be effected by other things
+	float MinJumpTime = 0.1f;	// This essentially decides how high the minimum jump is can't use actual height as its not a good measure and can be effected by other things
 
 	ACA_PlayerCamera* Camera = nullptr;
 

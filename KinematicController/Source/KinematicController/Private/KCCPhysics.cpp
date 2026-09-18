@@ -167,7 +167,7 @@ FVector AKCCPhysics::CollideAndSlideCollision(int& CurrentBounces, const Constan
 				if (Hit.Component->IsSimulatingPhysics())	// Added some code so that when hitting a wall that is considered a physics object it should add the appropriate impulse
 				{
 					float Impulse;
-					CalculateBounceImpulse(ConvertToUE5Units(Velocity) - Hit.Component->GetComponentVelocity(), Hit.Component->GetMass() + Mass, FloorNormal, Impulse);
+					CalculateBounceImpulse(ConvertToUE5Units(Velocity) - Hit.Component->GetComponentVelocity(), Hit.Component->GetMass() + Mass, CoefficientOfRestitution + Hit.PhysMaterial->Restitution, FloorNormal, Impulse);
 					Hit.Component->AddImpulseAtLocation(TotalImpulse * -FloorNormal, Hit.ImpactPoint);
 				}
 			}
@@ -258,7 +258,7 @@ void AKCCPhysics::OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActo
 		float OtherObjMass = OtherComp->GetMass();
 		// Couldn't find how to reference restitution if ue5 physics material
 
-		CalculateBounceImpulse(Velocity - OtherObjVelocity, Mass + OtherObjMass, SurfaceNormal, VelocityImpulse);
+		CalculateBounceImpulse(Velocity - OtherObjVelocity, Mass + OtherObjMass, CoefficientOfRestitution + Hit.PhysMaterial->Restitution, SurfaceNormal, VelocityImpulse);
 		FVector CharacterImpulse = VelocityImpulse * SurfaceNormal;		// Currently done along Impact Normal but may combine with projection method and change to a reflection of Impact Normal based on Initial velocity direction
 
 		FVector OtherObjImpulse = VelocityImpulse * -SurfaceNormal;
@@ -268,7 +268,7 @@ void AKCCPhysics::OnCharacterHit(UPrimitiveComponent* HitComp, AActor* OtherActo
 	}
 	else
 	{
-		CalculateBounceImpulse(Velocity, Mass, SurfaceNormal, VelocityImpulse);
+		CalculateBounceImpulse(Velocity, Mass, CoefficientOfRestitution, SurfaceNormal, VelocityImpulse);
 		AddForce(VelocityImpulse * SurfaceNormal, ForceType::Impulse);
 	}
 }
@@ -447,9 +447,9 @@ inline void AKCCPhysics::CalculateMomentum(const FVector& ObjVelocity, const flo
 	ObjMomentum = ObjVelocity * ObjMass;
 }
 
-void AKCCPhysics::CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal , float& Impulse)
+void AKCCPhysics::CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const float& TotalRestitution, const FVector& SurfaceNormal, float& Impulse)
 {
-	Impulse = -(1 + CoefficientOfRestitution) * DotProduct(RelativeVelocity, SurfaceNormal);
+	Impulse = -(TotalRestitution) * DotProduct(RelativeVelocity, SurfaceNormal);
 	Impulse *= TotalMass;
 }
 #pragma endregion

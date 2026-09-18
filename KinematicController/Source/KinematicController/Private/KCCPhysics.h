@@ -203,7 +203,7 @@ protected:
 	/// <param name="TotalMass"> The Mass of Both Objects Colliding</param>
 	/// <param name="SurfaceNormal"> The surface normal the object is bouncing off of</param>
 	/// <param name="Impulse"> The value to pass the resulting impulse to make sure to divide by mass to divy it up get the right ratio of the impulse</param>
-	void CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const FVector& SurfaceNormal, float& Impulse);
+	void CalculateBounceImpulse(const FVector& RelativeVelocity, const float& TotalMass, const float& TotalRestitution, const FVector& SurfaceNormal, float& Impulse);
 #pragma endregion
 
 #pragma region Collision Detection And Response

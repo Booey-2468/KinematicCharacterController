@@ -232,8 +232,8 @@ void AKCCInput::JumpLogic()
 
 	CanJump = CanJump && CurrentJumpCount < MaxJumpCount && (CurrentJumpCount < 1 || JumpTimer > MinJumpTime);	// Aded min Jump time check so that double jumps have a min jump time
 
-	if (Key->IsPressed)
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Can Player Jump? " + FString::FromInt(CurrentJumpCount));
+	//if (Key->IsPressed)
+		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Can Player Jump? " + FString::FromInt(CurrentJumpCount));
 
 	float UpwardVel = DotProduct(Velocity, GravityNormal);
 
@@ -245,10 +245,13 @@ void AKCCInput::JumpLogic()
 		++CurrentJumpCount;
 		JumpTimer = 0.0f;
 		Velocity -= ProjectOnNormal(Velocity, GravityNormal);
+		HasFallen = false;	// This makes sure successive jumps can do this too
 	}
 	else if (ShouldFall)
 	{
-		AddForce(VariableHeightImp * -GravityNormal * Mass, ForceType::Impulse);
+		float FallingImpulse;
+		CalculateBounceImpulse(Velocity, Mass, CoefficientOfRestitution,GravityNormal, FallingImpulse);
+		AddForce(FallingImpulse * GravityNormal, ForceType::Impulse); // This needs to be changed so its more smooth maybe using collision impulse calc
 		HasFallen = true;
 	}
 
