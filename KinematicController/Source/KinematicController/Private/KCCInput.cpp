@@ -195,7 +195,7 @@ void AKCCInput::AddMovementInput(AActor* MovementAxis, const float& DeltaTime)
 
 	MovementForce = MovementForce * MoveSpeed * CalculateSpeedMod(VelocityXZ, MovementForce);	// At this operation Movement force becomes a nan(ind) num since its added to accel accel becomes this to hence confusing the whole system
 
-
+	// MovementForce -= VelocityXZ; // Allows more uniform speed rather than a gradual speed-up and replaces Drift Force
 	// Should go roughly
 	//AddTransformVel(MovementForce);
 	AddForce(MovementForce + DriftForce, ForceType::Acceleration);	// This for whatever reason is just disabling the physics no clue why

@@ -11,11 +11,7 @@
 
 #include "Components/TimelineComponent.h"
 
-#include "EnhancedInput/Public/EnhancedInputSubsystems.h"
-
 #include "Components/CapsuleComponent.h"
-
-#include "EnhancedInputComponent.h"
 
 #include "KCCPhysics.generated.h"
 
