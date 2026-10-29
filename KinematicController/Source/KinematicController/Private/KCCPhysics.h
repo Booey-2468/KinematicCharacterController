@@ -75,9 +75,23 @@ protected:
 	/// <param name="SimTime"> I do not know what this is </param>
 	virtual void AsyncPhysicsTickActor(float DeltaTime, float SimTime) override;
 
+	/// <summary>
+	/// Actor Transform must be done in tick as there are issues with thread synchronization otherwise avoids visual stutter
+	/// </summary>
+	/// <param name="DeltaTime"> Needed to override </param>
+	virtual void Tick(float DeltaTime) override;
+
+	/// <summary>
+	/// Applies the state in tick
+	/// </summary>
+	void ApplyNewState();
+
 #pragma region Physics Calc And Application
 
 	FVector Acceleration = FVector::ZeroVector;		// This stores and accumulates accelertion until the end of the timestep where it is all then converted into velocity and position changes and this is then reset as the acceleration is not likely to be constant
+	
+	bool IsStateApplied = false;
+	FTransform NewState = FTransform(); 
 
 	FVector PreviousAcceleration = FVector::ZeroVector;	// This stores the previous/current (depending on if you see the time step being acted in as the future or the current) timesteps acceleration and this is stores the current/future time steps acceleraion at the end of it. This is needed for certain time integrations that use previous acceleration for accuracy such as verlet and velocity verlet
 	FVector PreviousPosition = FVector::ZeroVector;	// This stores the previous position of the player for time integration methods such as verlet
@@ -99,10 +113,15 @@ public:
 	float CoefficientOfRestitution = 0.5f;	// This is the ratio of kinetic enegy that would be lost during a bounce
 
 	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 100.0f), Category = "KCC Physics")
-	float FrictionCoefficent = 0.7f;	// This is the friction coefficient this decides how much friction the KCC has and how hard it is to get moving
+	float KineticFrictionCoefficent = 0.7f;	// This is the friction coefficient this decides how much friction the KCC has and how hard it is to get moving
 	
 	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 180.0f, Units = "m/s"), Category = "KCC Physics")
-	float MinFrictionVel = 0.05f;	// This is the minimum velocity magnitude necessary for friction to act so it doesn't add more than the actual  velocity and set it in a constant state of vibration at rest
+	float MinFrictionVel = 0.02f;	// This is the minimum velocity magnitude necessary for friction to act so it doesn't add more than the actual  velocity and set it in a constant state of vibration at rest
+
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f), Category = "KCC Physics")
+	float StaticFrictionCoefficient = 1.1f;	// This is the limit of static friction and makes moving harder for objects that slide
+
+	FVector PreviousFriction = FVector::ZeroVector;
 
 	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f, ClampMax = 100.0f), Category = "KCC Physics")
 	float DragCoefficent = 0.4f;	// This is the drag coefficient and reduces velocity by a fraction of itself this happens due to air resistance or other forms of drag
@@ -147,7 +166,7 @@ protected:
 	/// <param name="ObjMass"> This is the Mass of the object that presses against the ground </param>
 	/// <param name="FrictionCoeff"> This is the Coefficient of friction between the capsule and the ground </param>
 	/// <returns> This returns the amount of normal force that resists gravity </returns>
-	float CalculateNormalForce(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& FrictionCoeff);
+	float CalculateFrictionMag(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& KineticFrictionCoeff, const float& StaticFrictionCoeff);
 	
 	// Made the following 3 functions for RK4 integration and for when acceleration needs computing won't use in this project except maybe to make things looka bit cleaner
 	
@@ -162,7 +181,7 @@ protected:
 	/// <param name="InvertedMass"> This is the inverted Mass which is used for turning the normal force into an acceleration</param>
 	/// <param name="FrictionCoeff"> This is the coefficient of friction the KCC has</param>
 	/// <returns> The acceleration vector of friction</returns>
-	FVector CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff);
+	FVector CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& InvertedMass, const float& KineticFrictionCoeff, const float& StaticFrictionCoeff);
 
 	/// <summary>
 	/// This calculates the drag for the KCC

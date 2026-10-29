@@ -51,10 +51,10 @@ void AKCCInput::CalculatePhysicsForces()
 		AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
 
 	// Now scales min friction vel by friction coefficient and uses a larger value to stop jitter
-	if (IsInContact && VelMag > MinFrictionVel * FrictionCoefficent)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
+	if (IsInContact &&  VelMag > MinFrictionVel)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
 		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
-		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, Acceleration, Mass, InvMass, FrictionCoefficent);
+		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, Acceleration, Mass, InvMass, KineticFrictionCoefficent, StaticFrictionCoefficient);
 		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-SafeNormalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
 		AddForce(FrictionAccel, ForceType::Acceleration);
 	}
@@ -288,7 +288,6 @@ void AKCCInput::RotateToMovement(const FVector& MovementVector, const float& Del
 {
 	if (MovementVector.IsNearlyZero())
 		return;
-	FRotator MovementRotation = FQuat::Slerp(GetActorQuat(), SafeNormalized(MovementVector).Rotation().Quaternion(), DeltaTime * 2).Rotator();
-	SetActorRotation(MovementRotation);
+	NewState.SetRotation(FQuat::Slerp(GetActorQuat(), SafeNormalized(MovementVector).Rotation().Quaternion(), DeltaTime * 2));
 }
 #pragma endregion

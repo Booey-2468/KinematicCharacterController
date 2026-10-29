@@ -30,12 +30,25 @@ void AKCCPhysics::BeginPlay()
 		Collider->OnComponentHit.AddDynamic(this, &AKCCPhysics::OnCharacterHit);
 	}
 	InvMass = 1 / Mass;	// Need to do again if mass is ever changed
+	NewState = FTransform(GetActorTransform());
 }
 
 void AKCCPhysics::AsyncPhysicsTickActor(float DeltaTime, float SimTime)
 {
 	CalculatePhysicsForces();
 	ApplyVelocity(DeltaTime);
+}
+void AKCCPhysics::Tick(float DeltaTime)
+{
+	ApplyNewState();
+}
+void AKCCPhysics::ApplyNewState()
+{
+	if (IsStateApplied)
+	{
+		SetActorTransform(NewState);
+		IsStateApplied = false;
+	}
 }
 #pragma region Collision Detection And Response
 
@@ -61,11 +74,11 @@ FVector AKCCPhysics::CollideAndSlideCollision(int& CurrentBounces, const Constan
 
 	FHitResult Hit;
 
-	//GetWorld()->DebugDrawTraceTag = "DebugLine";
+	GetWorld()->DebugDrawTraceTag = "DebugLine";
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(this);
 	Params.bTraceComplex = true;
-	//Params.TraceTag = GetWorld()->DebugDrawTraceTag;
+	Params.TraceTag = GetWorld()->DebugDrawTraceTag;
 
 	FCollisionShape ShapeBounds = FCollisionShape::MakeCapsule(CapsuleRadius - ConvertToUE5Units(SkinWidth), CapsuleHalfHeight - ConvertToUE5Units(SkinWidth));
 
@@ -191,9 +204,9 @@ bool AKCCPhysics::SteppingCheck(EditableCollideAndSlideData& SteppingInfo, const
 	if (LeftoverVel.IsNearlyZero())
 		return false;
 
-	//GetWorld()->DebugDrawTraceTag = "DebugLine";
+	GetWorld()->DebugDrawTraceTag = "DebugLine";
 	FCollisionQueryParams params;
-	//params.TraceTag = GetWorld()->DebugDrawTraceTag;
+	params.TraceTag = GetWorld()->DebugDrawTraceTag;
 	params.AddIgnoredActor(this);
 
 	FCollisionShape Sphere = FCollisionShape::MakeSphere(CapsuleRadius);
@@ -393,7 +406,8 @@ void AKCCPhysics::ApplyVelocity(const float& DeltaTime)
 	// Used better way to solve issue instead of Manually adding radius and what not instead was able to get capsule location at collision for the displacement 
 	// Snap To Surface now uses this which now doesn't overlap with anything
 
-	SetActorLocation(NewPosition);
+	NewState.SetLocation(NewPosition);	// Can't Apply the Location in the Async physics actor thread
+	IsStateApplied = true;
 
    	PreviousAcceleration = Acceleration;
 	Acceleration = FVector::ZeroVector;
@@ -409,27 +423,30 @@ void AKCCPhysics::CalculatePhysicsForces()
 
 	AddForce(CalculateDragAccel(Velocity, DragCoefficent, InvMass), ForceType::Acceleration);
 
+
 	// Now scales min friction vel by friction coefficient and uses a larger value to stop jitter
-	if (IsInContact && VelMag > MinFrictionVel * FrictionCoefficent)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
+	if (IsInContact && VelMag > MinFrictionVel)	// Checks if there is any contact with a surface and if Velocity is large enough that friction doesn't spring it back and forth
 	{
 		// Changed what is usually Floor Normal to Gravity Normal to make movement more static as currently grvaity doesn't push down slopes so this just decreases friction unnecesarily
-		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, Acceleration, Mass, InvMass, FrictionCoefficent);
-		//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Current Normal Force" + (-SafeNormalized(ProjectOnPlane(Velocity, FloorNormal)) * NormalForce).ToCompactString());
+		FVector FrictionAccel = CalculateFrictionAccel(Velocity, GravityNormal, Acceleration, Mass, InvMass, KineticFrictionCoefficent, StaticFrictionCoefficient);		
+		
 		AddForce(FrictionAccel, ForceType::Acceleration);
+		// 	GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, "Is Friction Active" + (VelMag > MinFrictionVel));
 	}
 }
 
-float AKCCPhysics::CalculateNormalForce(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& FrictionCoeff)
+float AKCCPhysics::CalculateFrictionMag(const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& KineticFrictionCoeff, const float& StaticFrictionCoeff)
 {
 	// Changed normal force to be more accurate so any forces moving into the surface are included in normal force calc but normal force can't be negative so I check that it isn't and invert the surface normal for the dot product
-	float AccelInSurface = DotProduct(CurrentAccel, -SurfaceNormal);	
-	return (AccelInSurface < 0.0f) ? 0.0f : AccelInSurface * ObjMass * FrictionCoeff;
+	float ForceInSurface = FMath::Max(DotProduct(CurrentAccel, -SurfaceNormal) * ObjMass, 0.0f);
+	float ForceAlongSurface = Magnitude(CurrentAccel - ForceInSurface * -SurfaceNormal) * ObjMass;
+	return (ForceAlongSurface <= ForceInSurface * StaticFrictionCoeff) ? ForceAlongSurface  : ForceInSurface * KineticFrictionCoeff;
 }
 
-FVector AKCCPhysics::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& InvertedMass, const float& FrictionCoeff)
+FVector AKCCPhysics::CalculateFrictionAccel(const FVector Vel, const FVector& SurfaceNormal, const FVector& CurrentAccel, const float& ObjMass, const float& InvertedMass, const float& KineticFrictionCoeff, const float& StaticFrictionCoeff)
 {
 	// Realized issue with KCC is that more worse surface normal means that gravity is going against both gravity more as well as friction
-	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateNormalForce(SurfaceNormal, CurrentAccel, ObjMass, FrictionCoeff) * InvertedMass;
+	return -SafeNormalized(ProjectOnPlane(Vel, SurfaceNormal)) * CalculateFrictionMag(SurfaceNormal, CurrentAccel, ObjMass, KineticFrictionCoeff, StaticFrictionCoeff) * InvertedMass;
 }
 
 FVector AKCCPhysics::CalculateDragAccel(const FVector& Vel, const float& DragCoeff, const float& InvertedMass)
