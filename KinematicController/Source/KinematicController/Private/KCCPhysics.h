@@ -100,9 +100,11 @@ protected:
 	FVector TransformVelocity = FVector::ZeroVector;	// This stores Transform Velocity which is essentially an acceleration that you don't want retained over time so it is a one time acceleration allowing for a simple transform based mpvement instead of physics based movement
 	FVector TotalImpulse = FVector::ZeroVector;		// This stores the total impulse which is then added and multiplied by InvMass to velocity at the beginning of Apply Velocity this is mostly for unexpected collisions
 	
+
 public:
+	UPROPERTY(BlueprintReadOnly, Category = "KCC Physics")
 	FVector Velocity = FVector::ZeroVector;		// This stores and retains velocity this is applied during time integration but if interrupted via collisions then this is redefined by adding both displacements together and multiplying by inverse delta time
-	
+
 	UPROPERTY(EditAnywhere, Category = "KCC Physics")
 	FVector GravityNormal = FVector::UpVector;		// This is the gravity normal and is being used as a normal as it makes comparisons to it a lot easier such as for friction
 	
