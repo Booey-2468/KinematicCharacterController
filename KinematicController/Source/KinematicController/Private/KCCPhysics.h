@@ -479,6 +479,22 @@ protected:
 	FVector RotateVector(const FVector& VectorToRotate, const FVector& Axis , float Angle, bool IsDegrees = true);
 
 	/// <summary>
+	/// Uses basic trigonometry to convert a polar radius and angle to a cartesian 2D vector then using the angle between the 2 axes
+	/// </summary>
+	/// <param name="Radius">Accounts for radius/magnitude of Hypotenuse</param>
+	/// <param name="Angle">The angle between line and the xy axis </param>
+	/// <param name="Axis"> Stores the axis which is used for comparison to another which is 0, 0, 1 as it allows for 2D polar conversion</param>
+	/// <returns></returns>
+	FVector Polar2DToCartesian(const float& Radius, const float& Angle, const FVector& Axis);
+
+	/// <summary>
+	/// Uses Basic Trigonometry to get an angle from the vector based on its x and y when along the x, y plane
+	/// </summary>
+	/// <param name="Vector"></param>
+	/// <returns></returns>
+	float CartesianToPolarAngle(FVector Vector);
+
+	/// <summary>
 	/// Basically how this works is you take away the vector that is going 
 	/// </summary>
 	/// <param name="VectorToReflect"></param>

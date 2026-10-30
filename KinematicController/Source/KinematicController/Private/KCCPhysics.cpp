@@ -143,7 +143,7 @@ FVector AKCCPhysics::CollideAndSlideCollision(int& CurrentBounces, const Constan
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
 		
-			//float LeftOverMag = Magnitude(LeftoverVelocity);
+			//float LeftOverMag = Magnitude(LeftoverVelocity)
 
 			LeftoverVelocity = ProjectAndScaleNormalized(LeftoverVelocity, FloorNormal);
 			//if(Magnitude(LeftoverVelocity) / LeftOverMag * 100 < 99)
@@ -564,6 +564,18 @@ FVector AKCCPhysics::RotateVector(const FVector& VectorToRotate, const FVector& 
 {
 	Angle = (IsDegrees) ? Angle * (PI/180): Angle;
 	return VectorToRotate * FMath::Cos(Angle) + CrossProduct(Axis, VectorToRotate) * FMath::Sin(Angle) + Axis * DotProduct(Axis, VectorToRotate) * (1.0f - FMath::Cos(Angle));
+}
+
+FVector AKCCPhysics::Polar2DToCartesian(const float& Radius, const float& Angle, const FVector& Axis)
+{
+	// This seems as though it may be unnecesarily complex
+	return RotateVector(FVector(Radius * FMath::Cos(Angle), Radius * FMath::Sin(Angle), 0), CrossProduct(FVector(0, 0, 1), Axis), AngleBetweenVectors(FVector(0, 0, 1), Axis));
+}
+
+float AKCCPhysics::CartesianToPolarAngle(FVector Vector)
+{
+	Vector = ProjectOnNormalizedPlane(Vector, FVector(0, 0, 1));
+	return FMath::Atan2(Vector.Y, Vector.X) * (PI / 180);
 }
 
 FVector AKCCPhysics::ReflectVectorOnNormal(const FVector& VectorToReflect, const FVector& ReflectionNormal)

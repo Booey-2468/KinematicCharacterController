@@ -244,7 +244,7 @@ void AKCCInput::JumpLogic()
 		AddForce(JumpMagnitude * GravityNormal * Mass, ForceType::Impulse);
 		++CurrentJumpCount;
 		JumpTimer = 0.0f;
-		Velocity -= ProjectOnNormal(Velocity, GravityNormal);
+		Velocity -= ProjectOnNormal(Velocity, GravityNormal);	// Can be removed but mostly quality of life for higher gravity values
 		HasFallen = false;	// This makes sure successive jumps can do this too
 	}
 	else if (ShouldFall)

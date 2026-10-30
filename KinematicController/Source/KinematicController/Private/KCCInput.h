@@ -58,7 +58,7 @@ public:
 	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, Units = "m/s^2"), Category = "KCC Input")
 	float AirSpeed = 0.3f;
 
-	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true ClampMin = 0.0f), Category = "KCC Input")
+	UPROPERTY(EditAnywhere, meta = (AllowPrivateAccess = true, ClampMin = 0.0f), Category = "KCC Input")
 	float GroundDragCoefficient = 5.0f; // Removes Velocity so that Velocity is instantly removed when on ground
 	// Means that you can control the amoun of slide
 
