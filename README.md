@@ -40,7 +40,7 @@ Changes that Could be made But I'm not sure about:
 Could Instead of using 2 seperate Capsule Sweeps use 1 which would mean I would need to bake grounding logic inside the Collision Detection and Seperate The Vertical Component so that it doesn't contribute to the sliding magnitude.
 If I did this there would also be the performance issue that every time I hit a climbable slope there would have to be an extra ProjectOnPlane to Remove Gravity Displacement
 
-With the collisions with 
+Need to improve camera movement to avoid jerking
 
 Issues:
 
