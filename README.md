@@ -42,7 +42,7 @@ If I did this there would also be the performance issue that every time I hit a 
 
 Need to improve camera movement to avoid jerking
 
-Additions To Maths Library - Modulo, Float Modulo, Sign Function
+Additions To Maths Library - Modulo, Float Modulo, Sign Function, Min, Max, Clamp
 
 Issues:
 
