@@ -25,7 +25,7 @@ I now have added Stepping Logic so when meeting a wall smaller than step height 
 
 Now on all slopes 60 degrees or under there is perfect movement this is done by adding an extra skin width only for the gravity displacement
 
-When colliding with a physics object via the collide and slide algorithm applies a collision impulse at the impact location. Also if something has hit the actual collider there is penetration resolution along with an impulse applied to both the physics object if it is one and the player. 
+When colliding with a physics object via the collide and slide algorithm applies a collision impulse at the impact location. Also if something has hit the actual collider there is penetration resolution along with an impulse applied to both the physics object if it is one and the player.
 
 Added Properties to the Details page.
 
@@ -42,7 +42,7 @@ If I did this there would also be the performance issue that every time I hit a 
 
 Need to improve camera movement to avoid jerking
 
-Additions To Maths Library - Modulo, Float Modulo, Sign Function, Min, Max, Clamp, Absolute
+Additions To Maths Library - Modulo, Float Modulo, Min, Max, Clamp, Absolute
 
 Issues:
 
@@ -61,3 +61,4 @@ Friction is probably good though you can slightly see if you focus the player mo
 
 
 Need to get Skeletal Mesh to actually show up and work
+
