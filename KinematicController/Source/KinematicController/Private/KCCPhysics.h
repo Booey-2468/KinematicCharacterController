@@ -362,6 +362,9 @@ protected:
 	float Sqrt(const float& SqrtNum);
 	float InvSqrt(const float& SqrtNum);	// This was code that I wanted to create but realised CPU sqr rooting is much faster than one I create with code
 
+	int Sign(int x);
+	int SignBitShift(int x);
+
 	/// <summary>
 	/// Used to convert meters to centimeters as I prefer to use meters and its more common in physics overall
 	/// Needed when interacting with any UE5 systems such as shape sweeps and setting actor location

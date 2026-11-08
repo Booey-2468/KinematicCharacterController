@@ -143,7 +143,7 @@ FVector AKCCPhysics::CollideAndSlideCollision(int& CurrentBounces, const Constan
 				return SnapToSurface;	// Could also add momentum and bounciness to this but would require another iteration of function
 			}							// Optonally could add impulses to other objects if physics is enabled on them
 		
-			//float LeftOverMag = Magnitude(LeftoverVelocity)
+			//float LeftOverMag = Magnitude(LeftoverVelocity);
 
 			LeftoverVelocity = ProjectAndScaleNormalized(LeftoverVelocity, FloorNormal);
 			//if(Magnitude(LeftoverVelocity) / LeftOverMag * 100 < 99)
@@ -486,6 +486,16 @@ inline float AKCCPhysics::Power(const float& MultNum, const int& Power)
 		PoweredNum *= MultNum;
 
 	return PoweredNum;
+}
+
+int AKCCPhysics::Sign(int x)
+{
+	return (x > 0) - (x < 0);	// Could possibly cause branching
+}
+int AKCCPhysics::SignBitShift(int x)
+{
+	x |= (unsigned)x >> 1;	// avoids INT_Min bug being 0 accuracy of number isn't needed except sign
+	return ((unsigned)-x >> (sizeof(x) * 8 - 1)) - ((unsigned)x >> (sizeof(x) * 8 - 1));	// sign returns 1 when negative
 }
 
 FVector AKCCPhysics::ConvertToUE5Units(const FVector& Vector)
