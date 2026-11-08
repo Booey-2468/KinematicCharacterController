@@ -42,6 +42,8 @@ If I did this there would also be the performance issue that every time I hit a 
 
 Need to improve camera movement to avoid jerking
 
+Additions To Maths Library - Modulo, Float Modulo, Sign Function, Min, Max, Clamp, Absolute
+
 Issues:
 
 Got a big issue with call stack where it calls a breakpoint think it has something to do with pointers or references mainly happened with acceleration but also with current bounces. This doesn't crash the editor though
